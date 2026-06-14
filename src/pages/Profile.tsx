@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import Header from '@/components/layout/Header';
@@ -8,11 +8,20 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Mail, User, Shield } from 'lucide-react';
 
 const Profile: React.FC = () => {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, user, updateAccountProfile } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [name, setName] = useState(user?.name ?? '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setName(user?.name ?? '');
+  }, [user?.name]);
 
   if (isLoading) {
     return <div className="min-h-screen bg-background" />;
@@ -28,6 +37,32 @@ const Profile: React.FC = () => {
       .map(n => n[0])
       .join('')
       .toUpperCase();
+  };
+
+  const handleSaveProfile = async () => {
+    if (!name.trim()) {
+      toast({
+        title: 'Name is required',
+        description: 'Enter a display name before saving.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      await updateAccountProfile(name);
+      setIsEditing(false);
+      toast({ title: 'Profile updated' });
+    } catch (err) {
+      toast({
+        title: 'Failed to update profile',
+        description: err instanceof Error ? err.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -72,9 +107,10 @@ const Profile: React.FC = () => {
                   </Label>
                   <Input 
                     id="name" 
-                    value={user?.name || ''} 
-                    readOnly 
-                    className="bg-muted"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    readOnly={!isEditing}
+                    className={!isEditing ? 'bg-muted' : undefined}
                   />
                 </div>
 
@@ -106,9 +142,27 @@ const Profile: React.FC = () => {
               </div>
 
               <div className="pt-4 border-t">
-                <Button className="w-full" disabled>
-                  Edit Profile
-                </Button>
+                {isEditing ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setName(user?.name ?? '');
+                        setIsEditing(false);
+                      }}
+                      disabled={isSaving}
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={handleSaveProfile} disabled={isSaving}>
+                      {isSaving ? 'Saving...' : 'Save Profile'}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button className="w-full" onClick={() => setIsEditing(true)}>
+                    Edit Profile
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

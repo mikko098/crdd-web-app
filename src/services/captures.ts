@@ -10,7 +10,7 @@ import {
   Timestamp,
   updateDoc,
 } from 'firebase/firestore';
-import { getDownloadURL, ref } from 'firebase/storage';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
 import { DamageSeverity, DamageStatus, DamageType, InferenceDetection, MaintenanceComment, RoadDamage } from '@/types';
 import {
@@ -40,6 +40,8 @@ interface FirebaseCapture {
   worker_id?: string;
   error_message?: string | null;
   status?: string;
+  repair_status?: string;
+  after_repair_image_url?: string;
   assigned_team?: string;
   maintenance_comments?: Array<{
     author_id?: string;
@@ -106,10 +108,16 @@ function inferSeverity(detections: InferenceDetection[] | null | undefined): Dam
   return 'low';
 }
 
+const repairStatuses: DamageStatus[] = ['urgent', 'pending', 'in-progress', 'completed'];
+
+function isRepairStatus(value?: string): value is DamageStatus {
+  return repairStatuses.includes(value as DamageStatus);
+}
+
 function inferStatus(capture: FirebaseCapture, severity: DamageSeverity, trafficStatus: RoadDamage['trafficStatus']): DamageStatus {
-  if (capture.status === 'completed') return 'completed';
-  if (capture.status === 'in-progress') return 'in-progress';
-  if (capture.processing_started_at && !capture.processed_at) return 'in-progress';
+  if (isRepairStatus(capture.repair_status)) return capture.repair_status;
+  if (capture.assigned_team && isRepairStatus(capture.status)) return capture.status;
+  if (capture.assigned_team) return 'in-progress';
   if (severity === 'critical' || severity === 'high' || trafficStatus === 'high') return 'urgent';
   return 'pending';
 }
@@ -166,6 +174,9 @@ async function mapCaptureDocument(id: string, capture: FirebaseCapture): Promise
     },
     comment: capture.error_message ?? undefined,
     imageUrl: await resolveImageUrl(capture.file_url),
+    afterRepairImageUrl: capture.after_repair_image_url
+      ? await resolveImageUrl(capture.after_repair_image_url)
+      : undefined,
     trafficStatus,
     trafficCongestion,
     assignedTeam: capture.assigned_team,
@@ -198,7 +209,7 @@ export async function getCaptureById(id: string): Promise<RoadDamage | null> {
 
 export async function updateCaptureStatus(id: string, status: DamageStatus): Promise<void> {
   await updateDoc(doc(db, 'captures', id), {
-    status,
+    repair_status: status,
     updated_at: serverTimestamp(),
   });
 }
@@ -206,8 +217,27 @@ export async function updateCaptureStatus(id: string, status: DamageStatus): Pro
 export async function assignCaptureTeam(id: string, assignedTeam: string): Promise<void> {
   await updateDoc(doc(db, 'captures', id), {
     assigned_team: assignedTeam,
+    repair_status: 'in-progress',
     updated_at: serverTimestamp(),
   });
+}
+
+export async function uploadCaptureAfterRepairPhoto(id: string, file: File): Promise<string> {
+  const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const storagePath = `after-repair/${id}/${Date.now()}.${extension}`;
+  const storageRef = ref(storage, storagePath);
+
+  await uploadBytes(storageRef, file, {
+    contentType: file.type || 'image/jpeg',
+  });
+
+  await updateDoc(doc(db, 'captures', id), {
+    after_repair_image_url: storagePath,
+    repair_status: 'completed',
+    updated_at: serverTimestamp(),
+  });
+
+  return getDownloadURL(storageRef);
 }
 
 export async function addCaptureComment(

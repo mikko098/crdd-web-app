@@ -1,9 +1,13 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   onAuthStateChanged,
+  reauthenticateWithCredential,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
+  updatePassword,
   updateProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
@@ -15,6 +19,9 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<boolean>;
   register: (name: string, email: string, password: string) => Promise<boolean>;
+  resetPassword: (email: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  updateAccountProfile: (name: string) => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -113,13 +120,76 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return true;
   };
 
+  const resetPassword = async (email: string): Promise<void> => {
+    const continueUrl = import.meta.env.VITE_PASSWORD_RESET_CONTINUE_URL;
+
+    if (continueUrl) {
+      await sendPasswordResetEmail(auth, email, {
+        url: continueUrl,
+        handleCodeInApp: false,
+      });
+      return;
+    }
+
+    await sendPasswordResetEmail(auth, email);
+  };
+
+  const updateAccountProfile = async (name: string): Promise<void> => {
+    const cleanName = name.trim();
+    const currentUser = auth.currentUser;
+
+    if (!currentUser || !cleanName) {
+      throw new Error('Unable to update profile. Please sign in again.');
+    }
+
+    await updateProfile(currentUser, { displayName: cleanName });
+    await setDoc(
+      doc(db, 'users', currentUser.uid),
+      {
+        uid: currentUser.uid,
+        email: currentUser.email ?? '',
+        display_name: cleanName,
+        updated_at: serverTimestamp(),
+        is_active: true,
+      },
+      { merge: true },
+    );
+
+    setUser(await loadAppUser(currentUser, cleanName));
+  };
+
+  const changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
+    const currentUser = auth.currentUser;
+    const email = currentUser?.email;
+
+    if (!currentUser || !email) {
+      throw new Error('Unable to change password. Please sign in again.');
+    }
+
+    const credential = EmailAuthProvider.credential(email, currentPassword);
+    await reauthenticateWithCredential(currentUser, credential);
+    await updatePassword(currentUser, newPassword);
+  };
+
   const logout = async () => {
     await signOut(auth);
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user, isLoading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        register,
+        resetPassword,
+        changePassword,
+        updateAccountProfile,
+        logout,
+        isAuthenticated: !!user,
+        isLoading,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

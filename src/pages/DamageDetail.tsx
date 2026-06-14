@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCapture } from '@/hooks/useCaptures';
 import { DamageStatus } from '@/types';
-import { addCaptureComment, assignCaptureTeam, updateCaptureStatus } from '@/services/captures';
+import {
+  addCaptureComment,
+  assignCaptureTeam,
+  updateCaptureStatus,
+  uploadCaptureAfterRepairPhoto,
+} from '@/services/captures';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,6 +26,7 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import StatusBadge from '@/components/damage/StatusBadge';
 import SeverityIndicator from '@/components/damage/SeverityIndicator';
+import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft,
   MapPin,
@@ -46,7 +52,9 @@ const DamageDetail: React.FC = () => {
   const [selectedTeam, setSelectedTeam] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<DamageStatus | ''>('');
   const [savingAction, setSavingAction] = useState<string | null>(null);
+  const afterRepairInputRef = useRef<HTMLInputElement>(null);
   const { data: damage, isLoading, isError, error } = useCapture(id);
+  const { toast } = useToast();
 
   const isManager = user?.role === 'manager';
 
@@ -131,9 +139,14 @@ const DamageDetail: React.FC = () => {
       });
       setComment('');
       await refreshCapture();
+      toast({ title: 'Comment added' });
     } catch (err) {
       console.error('Failed to add comment:', err);
-      alert('Failed to add comment. Check your Firestore permissions and try again.');
+      toast({
+        title: 'Failed to add comment',
+        description: 'Check your Firestore permissions and try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSavingAction(null);
     }
@@ -145,10 +158,19 @@ const DamageDetail: React.FC = () => {
     try {
       setSavingAction('team');
       await assignCaptureTeam(damage.captureId ?? damage.id, selectedTeam);
+      setSelectedStatus('in-progress');
       await refreshCapture();
+      toast({
+        title: 'Team assigned',
+        description: `${selectedTeam} is now assigned to this report.`,
+      });
     } catch (err) {
       console.error('Failed to assign team:', err);
-      alert('Failed to assign team. Check your Firestore permissions and try again.');
+      toast({
+        title: 'Failed to assign team',
+        description: 'Check your Firestore permissions and try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSavingAction(null);
     }
@@ -161,11 +183,55 @@ const DamageDetail: React.FC = () => {
       setSavingAction('status');
       await updateCaptureStatus(damage.captureId ?? damage.id, selectedStatus);
       await refreshCapture();
+      toast({
+        title: 'Status updated',
+        description: `Repair status changed to ${selectedStatus.replace('-', ' ')}.`,
+      });
     } catch (err) {
       console.error('Failed to update status:', err);
-      alert('Failed to update status. Check your Firestore permissions and try again.');
+      toast({
+        title: 'Failed to update status',
+        description: 'Check your Firestore permissions and try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSavingAction(null);
+    }
+  };
+
+  const handleAfterRepairUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !damage) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Invalid file',
+        description: 'Please choose an image file.',
+        variant: 'destructive',
+      });
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      setSavingAction('after-repair-photo');
+      await uploadCaptureAfterRepairPhoto(damage.captureId ?? damage.id, file);
+      setSelectedStatus('completed');
+      await refreshCapture();
+      toast({
+        title: 'After-repair photo uploaded',
+        description: 'This report has been marked as completed.',
+      });
+    } catch (err) {
+      console.error('Failed to upload after repair photo:', err);
+      toast({
+        title: 'Failed to upload photo',
+        description: 'Check your Storage and Firestore permissions, then try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingAction(null);
+      event.target.value = '';
     }
   };
 
@@ -227,8 +293,21 @@ const DamageDetail: React.FC = () => {
                         <div className="text-center p-4">
                           <Camera className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
                           <p className="text-sm text-muted-foreground">Upload after repair photo</p>
-                          <Button variant="outline" size="sm" className="mt-2">
-                            Upload Photo
+                          <input
+                            ref={afterRepairInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleAfterRepairUpload}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2"
+                            onClick={() => afterRepairInputRef.current?.click()}
+                            disabled={savingAction === 'after-repair-photo'}
+                          >
+                            {savingAction === 'after-repair-photo' ? 'Uploading...' : 'Upload Photo'}
                           </Button>
                         </div>
                       </div>
@@ -272,7 +351,7 @@ const DamageDetail: React.FC = () => {
                     onChange={(e) => setComment(e.target.value)}
                     rows={3}
                   />
-                  <Button onClick={handleAddComment} disabled={!comment.trim()}>
+                  <Button onClick={handleAddComment} disabled={!comment.trim() || savingAction === 'comment'}>
                     <Send className="w-4 h-4 mr-2" />
                     {savingAction === 'comment' ? 'Saving...' : 'Submit Comment'}
                   </Button>
@@ -448,7 +527,7 @@ const DamageDetail: React.FC = () => {
                   <div className="space-y-2">
                     <Label>Update Status</Label>
                     <Select 
-                      value={selectedStatus} 
+                      value={selectedStatus || damage.status} 
                       onValueChange={(v) => setSelectedStatus(v as DamageStatus)}
                     >
                       <SelectTrigger>

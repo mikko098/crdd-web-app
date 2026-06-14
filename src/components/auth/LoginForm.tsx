@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/hooks/use-toast';
 import { AlertCircle, Mail, Lock, User, MapPin } from 'lucide-react';
 
 const LoginForm: React.FC = () => {
@@ -16,7 +17,9 @@ const LoginForm: React.FC = () => {
   const [registerPassword, setRegisterPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login, register } = useAuth();
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const { login, register, resetPassword } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -52,6 +55,30 @@ const LoginForm: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Account creation failed. Please try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const resetEmail = email.trim();
+
+    if (!resetEmail) {
+      setError('Enter your email address first, then request a password reset.');
+      return;
+    }
+
+    setError('');
+    setIsResettingPassword(true);
+
+    try {
+      await resetPassword(resetEmail);
+      toast({
+        title: 'Password reset email sent',
+        description: `A reset link has been sent to ${resetEmail}.`,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send reset email. Please try again.');
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -96,7 +123,17 @@ const LoginForm: React.FC = () => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="password">Password</Label>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-60"
+                      onClick={handleForgotPassword}
+                      disabled={isResettingPassword}
+                    >
+                      {isResettingPassword ? 'Sending...' : 'Forgot password?'}
+                    </button>
+                  </div>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input

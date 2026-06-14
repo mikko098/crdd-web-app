@@ -1,6 +1,7 @@
 export type UserRole = 'user' | 'manager';
 
 export type DamageStatus = 'urgent' | 'pending' | 'in-progress' | 'completed';
+export type ThemePreference = 'light' | 'dark' | 'system';
 
 export type DamageSeverity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -27,6 +28,15 @@ export interface User {
   email: string;
   role: UserRole;
   avatar?: string;
+}
+
+export interface UserSettings {
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  language: string;
+  twoFactor: boolean;
+  mobileAlerts: boolean;
+  theme: ThemePreference;
 }
 
 export interface RoadDamage {
