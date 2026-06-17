@@ -113,7 +113,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       
       <aside
         className={cn(
-          "fixed lg:relative h-[calc(100vh-4rem)] bg-sidebar border-r border-sidebar-border z-50 transition-sidebar overflow-hidden",
+          "fixed lg:relative h-[calc(100vh-4rem)] bg-sidebar text-sidebar-foreground border-r border-sidebar-border z-50 transition-sidebar overflow-hidden",
           isOpen ? "w-72" : "w-0 lg:w-14"
         )}
       >
@@ -130,7 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-muted-foreground" />
+                  <Filter className="w-4 h-4 text-sidebar-foreground/70" />
                   <span className="font-semibold">Filters</span>
                 </div>
                 <Button variant="ghost" size="sm" onClick={resetFilters} className="h-8 px-2">
@@ -156,7 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     Show captures with no detections
                   </label>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-sidebar-foreground/65">
                   Hidden by default so the map only shows confirmed damage reports.
                 </p>
               </div>
@@ -240,7 +240,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <Separator />
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <SortAsc className="w-4 h-4 text-muted-foreground" />
+                      <SortAsc className="w-4 h-4 text-sidebar-foreground/70" />
                       <Label className="text-sm font-medium">Sort By</Label>
                     </div>
                     <Select value={sortBy} onValueChange={onSortChange}>

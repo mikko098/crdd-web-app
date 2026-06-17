@@ -142,7 +142,7 @@ const Settings: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-secondary/30 flex flex-col">
       <Header onToggleSidebar={() => {}} />
 
       <main className="flex-1 p-6">

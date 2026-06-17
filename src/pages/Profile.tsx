@@ -66,7 +66,7 @@ const Profile: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-secondary/30 flex flex-col">
       <Header onToggleSidebar={() => {}} />
       
       <main className="flex-1 p-6">
@@ -85,7 +85,7 @@ const Profile: React.FC = () => {
               <div className="flex justify-center mb-4">
                 <Avatar className="h-24 w-24">
                   <AvatarImage src={user?.avatar} alt={user?.name} />
-                  <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+                  <AvatarFallback className="bg-foreground text-primary text-2xl">
                     {user?.name ? getInitials(user.name) : 'U'}
                   </AvatarFallback>
                 </Avatar>

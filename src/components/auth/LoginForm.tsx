@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { AlertCircle, Mail, Lock, User, MapPin } from 'lucide-react';
+import { AlertCircle, Mail, Lock, User, MapPin, TrafficCone } from 'lucide-react';
 
 const LoginForm: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -83,16 +83,18 @@ const LoginForm: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="absolute inset-0 gradient-primary opacity-5" />
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-background p-4">
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(var(--foreground))_0%,hsl(221_15%_20%)_52%,hsl(var(--background))_52%,hsl(var(--background))_100%)]" />
+      <div className="absolute left-0 top-0 h-full w-full bg-[linear-gradient(105deg,transparent_0%,transparent_47%,hsl(var(--primary))_47%,hsl(var(--primary))_48.5%,transparent_48.5%,transparent_100%)] opacity-80" />
       
-      <Card className="w-full max-w-md relative z-10 shadow-card border-0">
+      <Card className="w-full max-w-md relative z-10 border-border/70 bg-card/95 shadow-card backdrop-blur">
         <CardHeader className="text-center pb-2">
-          <div className="mx-auto mb-4 w-16 h-16 gradient-primary rounded-2xl flex items-center justify-center shadow-lg">
-            <MapPin className="w-8 h-8 text-primary-foreground" />
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-foreground shadow-lg ring-1 ring-primary/40">
+            <MapPin className="w-8 h-8 text-primary" />
           </div>
           <CardTitle className="text-2xl font-bold">RoadVision AI</CardTitle>
-          <CardDescription className="text-muted-foreground">
+          <CardDescription className="flex items-center justify-center gap-2 text-muted-foreground">
+            <TrafficCone className="h-4 w-4 text-primary" />
             Crowdsourcing Road Damage Detection
           </CardDescription>
         </CardHeader>

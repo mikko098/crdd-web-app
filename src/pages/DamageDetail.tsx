@@ -68,7 +68,7 @@ const DamageDetail: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background p-6">
+      <div className="min-h-screen bg-secondary/30 p-6">
         <div className="max-w-6xl mx-auto space-y-6">
           <Skeleton className="h-10 w-64" />
           <Skeleton className="h-80 w-full" />
@@ -236,9 +236,9 @@ const DamageDetail: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-secondary/30">
       {/* Header */}
-      <header className="h-16 bg-card border-b px-4 flex items-center gap-4 sticky top-0 z-50">
+      <header className="h-16 border-b bg-card/95 px-4 flex items-center gap-4 sticky top-0 z-50 shadow-sm backdrop-blur">
         <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
           <ArrowLeft className="w-5 h-5" />
         </Button>

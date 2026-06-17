@@ -39,15 +39,15 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   };
 
   return (
-    <header className="h-16 bg-card border-b border-border px-4 flex items-center justify-between sticky top-0 z-50">
+    <header className="h-16 border-b border-border bg-card/95 px-4 flex items-center justify-between sticky top-0 z-50 shadow-sm backdrop-blur">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={onToggleSidebar} className="lg:hidden">
           <Menu className="w-5 h-5" />
         </Button>
         
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 gradient-primary rounded-lg flex items-center justify-center">
-            <MapPin className="w-5 h-5 text-primary-foreground" />
+          <div className="w-9 h-9 rounded-lg bg-foreground flex items-center justify-center ring-1 ring-primary/30">
+            <MapPin className="w-5 h-5 text-primary" />
           </div>
           <div className="hidden sm:block">
             <h1 className="font-semibold text-foreground">RoadVision AI</h1>
@@ -58,7 +58,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
       <div className="flex items-center gap-3">
         <ThemeToggle />
-        <Badge variant="outline" className="hidden sm:flex">
+        <Badge variant="outline" className="hidden border-primary/40 bg-primary/10 text-foreground sm:flex">
           {user?.role === 'manager' ? 'Manager' : 'User'}
         </Badge>
         
@@ -67,7 +67,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             <Button variant="ghost" className="relative h-10 w-10 rounded-full">
               <Avatar className="h-9 w-9">
                 <AvatarImage src={user?.avatar} alt={user?.name} />
-                <AvatarFallback className="bg-primary text-primary-foreground">
+                <AvatarFallback className="bg-foreground text-primary">
                   {user?.name ? getInitials(user.name) : 'U'}
                 </AvatarFallback>
               </Avatar>
