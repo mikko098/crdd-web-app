@@ -22,6 +22,21 @@ export interface MaintenanceComment {
   createdAt: string;
 }
 
+export interface MaintenanceTeam {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface WorkflowEvent {
+  id: string;
+  action: string;
+  actorId: string;
+  actorName: string;
+  createdAt: string;
+  details?: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -32,10 +47,7 @@ export interface User {
 
 export interface UserSettings {
   emailNotifications: boolean;
-  pushNotifications: boolean;
   language: string;
-  twoFactor: boolean;
-  mobileAlerts: boolean;
   theme: ThemePreference;
 }
 

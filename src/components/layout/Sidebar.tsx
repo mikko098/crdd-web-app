@@ -3,6 +3,7 @@ import { DamageType, DamageStatus, DamageSeverity } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -12,11 +13,13 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { 
+  Calendar,
   ChevronLeft, 
   ChevronRight, 
   Filter, 
   SortAsc,
-  RotateCcw
+  RotateCcw,
+  Search
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +37,12 @@ interface SidebarProps {
   onFiltersChange: (filters: Filters) => void;
   sortBy: string;
   onSortChange: (sort: string) => void;
+  searchTerm: string;
+  onSearchChange: (search: string) => void;
+  dateFrom: string;
+  onDateFromChange: (date: string) => void;
+  dateTo: string;
+  onDateToChange: (date: string) => void;
   view: 'map' | 'list';
 }
 
@@ -73,6 +82,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   onFiltersChange,
   sortBy,
   onSortChange,
+  searchTerm,
+  onSearchChange,
+  dateFrom,
+  onDateFromChange,
+  dateTo,
+  onDateToChange,
   view,
 }) => {
   const toggleType = (type: DamageType) => {
@@ -99,6 +114,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   const resetFilters = () => {
     onFiltersChange({ types: [], statuses: [], severities: [], showNoDetections: false });
     onSortChange('date-desc');
+    onSearchChange('');
+    onDateFromChange('');
+    onDateToChange('');
   };
 
   return (
@@ -113,7 +131,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       
       <aside
         className={cn(
-          "fixed lg:relative h-[calc(100vh-4rem)] bg-sidebar text-sidebar-foreground border-r border-sidebar-border z-50 transition-sidebar overflow-hidden",
+          "fixed left-0 top-16 h-[calc(100dvh-4rem)] bg-sidebar text-sidebar-foreground border-r border-sidebar-border z-50 transition-sidebar overflow-hidden lg:sticky lg:top-16 lg:self-start lg:shrink-0",
           isOpen ? "w-72" : "w-0 lg:w-14"
         )}
       >
@@ -121,7 +139,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           {/* Toggle button */}
           <div className="p-2 flex justify-end border-b border-sidebar-border">
             <Button variant="ghost" size="icon" onClick={onToggle}>
-              {isOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              {isOpen ? (
+                <ChevronLeft className="w-4 h-4 text-sidebar-primary drop-shadow-sm" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-sidebar-primary drop-shadow-sm" />
+              )}
             </Button>
           </div>
 
@@ -130,14 +152,58 @@ const Sidebar: React.FC<SidebarProps> = ({
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-sidebar-foreground/70" />
+                  <Filter className="w-4 h-4 text-sidebar-primary drop-shadow-sm" />
                   <span className="font-semibold">Filters</span>
                 </div>
                 <Button variant="ghost" size="sm" onClick={resetFilters} className="h-8 px-2">
-                  <RotateCcw className="w-3 h-3 mr-1" />
+                  <RotateCcw className="w-3 h-3 mr-1 text-sidebar-primary drop-shadow-sm" />
                   Reset
                 </Button>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="report-search" className="text-sm font-medium">Search Reports</Label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-primary drop-shadow-sm" />
+                  <Input
+                    id="report-search"
+                    value={searchTerm}
+                    onChange={(event) => onSearchChange(event.target.value)}
+                    placeholder="Location, report, team"
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Date Range</Label>
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(event) => onDateFromChange(event.target.value)}
+                      aria-label="Start date"
+                      className="dashboard-date-input pr-9"
+                    />
+                    <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-primary drop-shadow-sm" />
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type="date"
+                      value={dateTo}
+                      onChange={(event) => onDateToChange(event.target.value)}
+                      aria-label="End date"
+                      className="dashboard-date-input pr-9"
+                    />
+                    <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-primary drop-shadow-sm" />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
 
               {/* No-detection captures */}
               <div className="space-y-2">
@@ -240,7 +306,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <Separator />
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <SortAsc className="w-4 h-4 text-sidebar-foreground/70" />
+                      <SortAsc className="w-4 h-4 text-sidebar-primary drop-shadow-sm" />
                       <Label className="text-sm font-medium">Sort By</Label>
                     </div>
                     <Select value={sortBy} onValueChange={onSortChange}>
@@ -265,7 +331,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {!isOpen && (
             <div className="hidden lg:flex flex-col items-center gap-4 p-2 pt-4">
               <Button variant="ghost" size="icon" onClick={onToggle} title="Open Filters">
-                <Filter className="w-4 h-4" />
+                <Filter className="w-4 h-4 text-sidebar-primary drop-shadow-sm" />
               </Button>
             </div>
           )}

@@ -1,16 +1,28 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DamageType, DamageStatus, DamageSeverity } from '@/types';
 import { useCaptures } from '@/hooks/useCaptures';
+import { hasPermission } from '@/lib/permissions';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import MapView from '@/components/map/MapView';
 import DamageList from '@/components/damage/DamageList';
+import ManagerReportDashboard from '@/components/dashboard/ManagerReportDashboard';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, List, Map } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { AlertTriangle, BarChart3, Download, List, Map } from 'lucide-react';
+
+type DashboardView = 'overview' | 'map' | 'list';
 
 interface Filters {
   types: DamageType[];
@@ -20,10 +32,10 @@ interface Filters {
 }
 
 const Dashboard: React.FC = () => {
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const { data: damages = [], isLoading, isError, error } = useCaptures();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [view, setView] = useState<'map' | 'list'>('map');
+  const [view, setView] = useState<DashboardView>('overview');
   const [filters, setFilters] = useState<Filters>({
     types: [],
     statuses: [],
@@ -31,12 +43,51 @@ const Dashboard: React.FC = () => {
     showNoDetections: false,
   });
   const [sortBy, setSortBy] = useState('date-desc');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const canExportReports = hasPermission(user, 'reports:export');
+  const canViewManagerOverview = hasPermission(user, 'reports:export');
 
-  const filteredDamages = useMemo(() => {
+  const mapReportPool = useMemo(() => {
     let result = [...damages];
 
     if (!filters.showNoDetections) {
       result = result.filter(d => (d.inferenceResults?.length ?? 0) > 0);
+    }
+
+    return result;
+  }, [damages, filters.showNoDetections]);
+
+  const filteredDamages = useMemo(() => {
+    let result = [...mapReportPool];
+
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    if (normalizedSearch) {
+      result = result.filter(d => [
+        d.captureId,
+        d.id,
+        d.type,
+        d.status,
+        d.severity,
+        d.location.address,
+        d.contributor.name,
+        d.assignedTeam,
+        d.description,
+        d.comment,
+      ].some(value => String(value ?? '').toLowerCase().includes(normalizedSearch)));
+    }
+
+    if (dateFrom) {
+      const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
+      result = result.filter(d => new Date(d.dateReported).getTime() >= fromTime);
+    }
+
+    if (dateTo) {
+      const toTime = new Date(`${dateTo}T23:59:59`).getTime();
+      result = result.filter(d => new Date(d.dateReported).getTime() <= toTime);
     }
 
     // Apply type filter
@@ -78,7 +129,48 @@ const Dashboard: React.FC = () => {
     });
 
     return result;
-  }, [damages, filters, sortBy]);
+  }, [dateFrom, dateTo, filters.severities, filters.statuses, filters.types, mapReportPool, searchTerm, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredDamages.length / pageSize));
+  const pagedDamages = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredDamages.slice(start, start + pageSize);
+  }, [filteredDamages, page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [dateFrom, dateTo, filters, pageSize, searchTerm, sortBy, view]);
+
+  const exportFilteredReports = () => {
+    if (!canExportReports) return;
+
+    const headers = ['id', 'capture_id', 'type', 'severity', 'status', 'location', 'lat', 'lng', 'date_reported', 'contributor', 'assigned_team', 'traffic_status'];
+    const rows = filteredDamages.map(d => [
+      d.id,
+      d.captureId ?? '',
+      d.type,
+      d.severity,
+      d.status,
+      d.location.address,
+      d.location.lat,
+      d.location.lng,
+      d.dateReported,
+      d.contributor.name,
+      d.assignedTeam ?? '',
+      d.trafficStatus,
+    ]);
+
+    const csv = [headers, ...rows]
+      .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `road-damage-reports-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (isAuthLoading) {
     return <div className="min-h-screen bg-background" />;
@@ -88,11 +180,13 @@ const Dashboard: React.FC = () => {
     return <Navigate to="/login" replace />;
   }
 
+  const activeView = canViewManagerOverview ? view : view === 'overview' ? 'map' : view;
+
   return (
     <div className="min-h-screen bg-secondary/30 flex flex-col">
       <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
       
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-[calc(100dvh-4rem)] flex-1 items-stretch">
         <Sidebar
           isOpen={sidebarOpen}
           onToggle={() => setSidebarOpen(!sidebarOpen)}
@@ -100,52 +194,114 @@ const Dashboard: React.FC = () => {
           onFiltersChange={setFilters}
           sortBy={sortBy}
           onSortChange={setSortBy}
-          view={view}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          dateFrom={dateFrom}
+          onDateFromChange={setDateFrom}
+          dateTo={dateTo}
+          onDateToChange={setDateTo}
+          view={activeView === 'overview' ? 'map' : activeView}
         />
         
-        <main className="flex-1 overflow-hidden flex flex-col">
+        <main className="flex min-w-0 flex-1 flex-col">
           {/* View toggle */}
           <div className="p-4 border-b bg-card/95 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-4">
-              <h2 className="text-lg font-semibold">Road Damage Reports</h2>
+              <h2 className="text-lg font-semibold">
+                {activeView === 'overview' ? 'Manager Report Dashboard' : 'Road Damage Reports'}
+              </h2>
               <span className="text-sm text-muted-foreground">
-                {filteredDamages.length} of {damages.length} reports
+                {filteredDamages.length} of {mapReportPool.length} reports
               </span>
             </div>
             
-            <Tabs value={view} onValueChange={(v) => setView(v as 'map' | 'list')}>
-              <TabsList>
-                <TabsTrigger value="map" className="gap-2">
-                  <Map className="w-4 h-4" />
-                  <span className="hidden sm:inline">Map View</span>
-                </TabsTrigger>
-                <TabsTrigger value="list" className="gap-2">
-                  <List className="w-4 h-4" />
-                  <span className="hidden sm:inline">List View</span>
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex items-center gap-2">
+              {canExportReports && (
+                <Button type="button" variant="outline" onClick={exportFilteredReports} disabled={!filteredDamages.length}>
+                  <Download className="mr-2 h-4 w-4 text-primary" />
+                  Export CSV
+                </Button>
+              )}
+              <Tabs value={activeView} onValueChange={(v) => setView(v as DashboardView)}>
+                <TabsList>
+                  {canViewManagerOverview && (
+                    <TabsTrigger value="overview" className="gap-2">
+                      <BarChart3 className="w-4 h-4 text-primary" />
+                      <span className="hidden sm:inline">Dashboard</span>
+                    </TabsTrigger>
+                  )}
+                  <TabsTrigger value="map" className="gap-2">
+                    <Map className="w-4 h-4 text-status-in-progress" />
+                    <span className="hidden sm:inline">Map View</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="list" className="gap-2">
+                    <List className="w-4 h-4 text-status-completed" />
+                    <span className="hidden sm:inline">List View</span>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-auto p-4">
+          <div className={activeView === 'map' ? 'min-h-0 flex-1' : 'p-4'}>
             {isLoading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-[500px] w-full rounded-lg" />
-                <Skeleton className="h-12 w-64" />
+              <div className={activeView === 'map' ? 'h-full min-h-[500px]' : 'space-y-4'}>
+                <Skeleton className={activeView === 'map' ? 'h-full min-h-[500px] w-full' : 'h-[500px] w-full rounded-lg'} />
+                {activeView === 'list' && <Skeleton className="h-12 w-64" />}
               </div>
             ) : isError ? (
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Unable to load Firebase captures</AlertTitle>
-                <AlertDescription>
-                  {error instanceof Error ? error.message : 'Check Firestore read rules and Firebase configuration.'}
-                </AlertDescription>
-              </Alert>
-            ) : view === 'map' ? (
+              <div className="p-4">
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  <AlertTitle>Unable to load Firebase captures</AlertTitle>
+                  <AlertDescription>
+                    {error instanceof Error ? error.message : 'Check Firestore read rules and Firebase configuration.'}
+                  </AlertDescription>
+                </Alert>
+              </div>
+            ) : activeView === 'overview' ? (
+              <ManagerReportDashboard damages={filteredDamages} />
+            ) : activeView === 'map' ? (
               <MapView damages={filteredDamages} />
             ) : (
-              <DamageList damages={filteredDamages} />
+              <div className="space-y-3">
+                <DamageList damages={pagedDamages} />
+                <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Page {page} of {totalPages} ({filteredDamages.length} matching reports)
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Select value={String(pageSize)} onValueChange={(value) => setPageSize(Number(value))}>
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setPage((current) => Math.max(1, current - 1))}
+                      disabled={page === 1}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                      disabled={page === totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </main>

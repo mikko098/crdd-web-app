@@ -28,8 +28,8 @@ const LoginForm: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const success = await login(email, password);
-      if (success) {
+      const result = await login(email, password);
+      if (result.success) {
         navigate('/dashboard');
       } else {
         setError('Invalid Firebase credentials.');
@@ -83,10 +83,26 @@ const LoginForm: React.FC = () => {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-background p-4">
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(var(--foreground))_0%,hsl(221_15%_20%)_52%,hsl(var(--background))_52%,hsl(var(--background))_100%)]" />
-      <div className="absolute left-0 top-0 h-full w-full bg-[linear-gradient(105deg,transparent_0%,transparent_47%,hsl(var(--primary))_47%,hsl(var(--primary))_48.5%,transparent_48.5%,transparent_100%)] opacity-80" />
-      
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-foreground p-4">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_24px_24px,hsl(0_0%_100%/0.08)_1px,transparent_1.5px)] bg-[length:48px_48px]" />
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(220_18%_8%)_0%,hsl(221_15%_16%)_48%,hsl(220_18%_8%)_100%)]" />
+      <svg
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-95"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <line
+          x1="-8%"
+          y1="50%"
+          x2="108%"
+          y2="50%"
+          stroke="hsl(var(--primary))"
+          strokeWidth="14"
+          strokeLinecap="round"
+          strokeDasharray="72 46"
+        />
+      </svg>
+
       <Card className="w-full max-w-md relative z-10 border-border/70 bg-card/95 shadow-card backdrop-blur">
         <CardHeader className="text-center pb-2">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-foreground shadow-lg ring-1 ring-primary/40">
@@ -157,7 +173,7 @@ const LoginForm: React.FC = () => {
                   </div>
                 )}
                 
-                <Button type="submit" variant="gradient" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? 'Signing in...' : 'Sign In'}
                 </Button>
               </form>

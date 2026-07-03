@@ -1,4 +1,5 @@
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
@@ -9,10 +10,15 @@ import {
   serverTimestamp,
   Timestamp,
   updateDoc,
+  arrayUnion,
+  onSnapshot,
+  QuerySnapshot,
+  DocumentData,
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
-import { DamageSeverity, DamageStatus, DamageType, InferenceDetection, MaintenanceComment, RoadDamage } from '@/types';
+import { requireManager } from '@/lib/permissions';
+import { DamageSeverity, DamageStatus, DamageType, InferenceDetection, MaintenanceComment, RoadDamage, User, WorkflowEvent } from '@/types';
 import {
   congestionFromStoredLevel,
   getTrafficCongestion,
@@ -49,6 +55,16 @@ interface FirebaseCapture {
     text?: string;
     created_at?: Timestamp | number | string;
   }>;
+}
+
+type WorkflowActor = Pick<User, 'id' | 'name' | 'role'>;
+
+interface FirestoreWorkflowEvent {
+  action?: string;
+  actor_id?: string;
+  actor_name?: string;
+  created_at?: Timestamp | string;
+  details?: string;
 }
 
 const captureCollection = collection(db, 'captures');
@@ -157,7 +173,7 @@ async function mapCaptureDocument(id: string, capture: FirebaseCapture): Promise
   const trafficStatus = trafficStatusFromCongestion(trafficCongestion);
 
   return {
-    id: capture.capture_id ?? id,
+    id,
     captureId: capture.capture_id ?? id,
     type: pickDamageType(detections),
     severity,
@@ -207,22 +223,114 @@ export async function getCaptureById(id: string): Promise<RoadDamage | null> {
   return mapCaptureDocument(snapshot.id, snapshot.data() as FirebaseCapture);
 }
 
-export async function updateCaptureStatus(id: string, status: DamageStatus): Promise<void> {
+async function mapCaptureSnapshot(snapshot: QuerySnapshot<DocumentData>): Promise<RoadDamage[]> {
+  return Promise.all(snapshot.docs.map((captureDoc) => mapCaptureDocument(captureDoc.id, captureDoc.data() as FirebaseCapture)));
+}
+
+export function subscribeCaptures(
+  onData: (captures: RoadDamage[]) => void,
+  onError: (error: Error) => void,
+): () => void {
+  return onSnapshot(
+    query(captureCollection, orderBy('created_at', 'desc'), limit(250)),
+    (snapshot) => {
+      mapCaptureSnapshot(snapshot).then(onData).catch(onError);
+    },
+    onError,
+  );
+}
+
+export function subscribeCaptureById(
+  id: string,
+  onData: (capture: RoadDamage | null) => void,
+  onError: (error: Error) => void,
+): () => void {
+  return onSnapshot(
+    doc(db, 'captures', id),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onData(null);
+        return;
+      }
+
+      mapCaptureDocument(snapshot.id, snapshot.data() as FirebaseCapture).then(onData).catch(onError);
+    },
+    onError,
+  );
+}
+
+async function recordWorkflowEvent(
+  id: string,
+  event: {
+    action: string;
+    actor?: WorkflowActor;
+    details?: string;
+  },
+): Promise<void> {
+  try {
+    await addDoc(collection(doc(db, 'captures', id), 'workflow_events'), {
+      action: event.action,
+      actor_id: event.actor?.id ?? 'system',
+      actor_name: event.actor?.name ?? 'System',
+      details: event.details ?? '',
+      created_at: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('Failed to write workflow event.', error);
+  }
+}
+
+export async function getCaptureWorkflowEvents(id: string): Promise<WorkflowEvent[]> {
+  const snapshot = await getDocs(query(collection(doc(db, 'captures', id), 'workflow_events'), orderBy('created_at', 'desc'), limit(25)));
+
+  return snapshot.docs.map((eventDoc) => {
+    const data = eventDoc.data() as FirestoreWorkflowEvent;
+    return {
+      id: eventDoc.id,
+      action: data.action ?? 'updated',
+      actorId: data.actor_id ?? 'unknown',
+      actorName: data.actor_name ?? 'Unknown user',
+      details: data.details,
+      createdAt:
+        typeof data.created_at === 'string'
+          ? data.created_at
+          : timestampToIso(data.created_at) ?? new Date().toISOString(),
+    };
+  });
+}
+
+export async function updateCaptureStatus(id: string, status: DamageStatus, actor: WorkflowActor): Promise<void> {
+  requireManager(actor);
+
   await updateDoc(doc(db, 'captures', id), {
     repair_status: status,
     updated_at: serverTimestamp(),
   });
+  await recordWorkflowEvent(id, {
+    action: 'status-updated',
+    actor,
+    details: `Status changed to ${status.replace('-', ' ')}.`,
+  });
 }
 
-export async function assignCaptureTeam(id: string, assignedTeam: string): Promise<void> {
+export async function assignCaptureTeam(id: string, assignedTeam: string, actor: WorkflowActor): Promise<void> {
+  requireManager(actor);
+
   await updateDoc(doc(db, 'captures', id), {
     assigned_team: assignedTeam,
     repair_status: 'in-progress',
     updated_at: serverTimestamp(),
   });
+  await recordWorkflowEvent(id, {
+    action: 'team-assigned',
+    actor,
+    details: `${assignedTeam} assigned to this report.`,
+  });
 }
 
-export async function uploadCaptureAfterRepairPhoto(id: string, file: File): Promise<string> {
+export async function uploadCaptureAfterRepairPhoto(id: string, file: File, actor: WorkflowActor): Promise<string> {
+  requireManager(actor);
+
   const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
   const storagePath = `after-repair/${id}/${Date.now()}.${extension}`;
   const storageRef = ref(storage, storagePath);
@@ -236,6 +344,11 @@ export async function uploadCaptureAfterRepairPhoto(id: string, file: File): Pro
     repair_status: 'completed',
     updated_at: serverTimestamp(),
   });
+  await recordWorkflowEvent(id, {
+    action: 'after-photo-uploaded',
+    actor,
+    details: 'After-repair photo uploaded and report marked completed.',
+  });
 
   return getDownloadURL(storageRef);
 }
@@ -245,24 +358,32 @@ export async function addCaptureComment(
   comment: {
     authorId: string;
     authorName: string;
+    authorRole: User['role'];
     text: string;
   },
 ): Promise<void> {
-  const current = await getDoc(doc(db, 'captures', id));
-  const existing = current.exists()
-    ? ((current.data() as FirebaseCapture).maintenance_comments ?? [])
-    : [];
+  requireManager({
+    id: comment.authorId,
+    name: comment.authorName,
+    role: comment.authorRole,
+  });
 
   await updateDoc(doc(db, 'captures', id), {
-    maintenance_comments: [
-      ...existing,
-      {
-        author_id: comment.authorId,
-        author_name: comment.authorName,
-        text: comment.text,
-        created_at: new Date().toISOString(),
-      },
-    ],
+    maintenance_comments: arrayUnion({
+      author_id: comment.authorId,
+      author_name: comment.authorName,
+      text: comment.text,
+      created_at: new Date().toISOString(),
+    }),
     updated_at: serverTimestamp(),
+  });
+  await recordWorkflowEvent(id, {
+    action: 'comment-added',
+    actor: {
+      id: comment.authorId,
+      name: comment.authorName,
+      role: comment.authorRole,
+    },
+    details: comment.text,
   });
 }

@@ -53,13 +53,13 @@
     --map-overlay: 42 18% 99% / 0.95;
     --map-card: 42 18% 99%;
 
-    --sidebar-background: 220 18% 13%;
-    --sidebar-foreground: 45 14% 96%;
+    --sidebar-background: 42 18% 99%;
+    --sidebar-foreground: 220 18% 13%;
     --sidebar-primary: 39 93% 48%;
     --sidebar-primary-foreground: 220 24% 10%;
-    --sidebar-accent: 219 14% 20%;
-    --sidebar-accent-foreground: 45 14% 96%;
-    --sidebar-border: 217 12% 24%;
+    --sidebar-accent: 38 76% 88%;
+    --sidebar-accent-foreground: 220 24% 10%;
+    --sidebar-border: 36 10% 80%;
     --sidebar-ring: 39 93% 48%;
 
     /* Gradients */
@@ -202,4 +202,8 @@ select:-webkit-autofill {
   -webkit-text-fill-color: hsl(var(--foreground));
   -webkit-box-shadow: 0 0 0px 1000px hsl(var(--background)) inset;
   transition: background-color 5000s ease-in-out 0s;
+}
+
+.dashboard-date-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
 }

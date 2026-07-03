@@ -40,7 +40,7 @@ const DamageList: React.FC<DamageListProps> = ({ damages }) => {
   if (damages.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-        <MapPin className="w-12 h-12 mb-4 opacity-50" />
+        <MapPin className="w-12 h-12 mb-4 text-primary opacity-70" />
         <p className="text-lg font-medium">No damage reports found</p>
         <p className="text-sm">Try adjusting your filters</p>
       </div>
@@ -72,12 +72,12 @@ const DamageList: React.FC<DamageListProps> = ({ damages }) => {
               className="cursor-pointer hover:bg-muted/50 transition-colors"
               onClick={() => navigate(`/damage/${damage.id}`)}
             >
-              <TableCell className="font-medium">{damage.id}</TableCell>
+              <TableCell className="font-medium">{damage.captureId ?? damage.id}</TableCell>
               <TableCell>
                 <div className="w-12 h-12 rounded-md overflow-hidden">
                   <img 
                     src={damage.imageUrl} 
-                    alt={`Damage ${damage.id}`}
+                    alt={`Damage ${damage.captureId ?? damage.id}`}
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -118,7 +118,7 @@ const DamageList: React.FC<DamageListProps> = ({ damages }) => {
                     navigate(`/damage/${damage.id}`);
                   }}
                 >
-                  <Eye className="w-4 h-4" />
+                  <Eye className="w-4 h-4 text-primary" />
                 </Button>
               </TableCell>
             </TableRow>

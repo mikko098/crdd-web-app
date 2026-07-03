@@ -1,13 +1,10 @@
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteField, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { UserSettings } from '@/types';
 
 export const defaultUserSettings: UserSettings = {
   emailNotifications: true,
-  pushNotifications: false,
   language: 'en',
-  twoFactor: false,
-  mobileAlerts: true,
   theme: 'system',
 };
 
@@ -18,9 +15,12 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
     return defaultUserSettings;
   }
 
+  const data = snapshot.data() as Partial<UserSettings>;
+
   return {
-    ...defaultUserSettings,
-    ...(snapshot.data() as Partial<UserSettings>),
+    emailNotifications: data.emailNotifications ?? defaultUserSettings.emailNotifications,
+    language: data.language ?? defaultUserSettings.language,
+    theme: data.theme ?? defaultUserSettings.theme,
   };
 }
 
@@ -29,6 +29,8 @@ export async function saveUserSettings(userId: string, settings: UserSettings): 
     doc(db, 'user_settings', userId),
     {
       ...settings,
+      pushNotifications: deleteField(),
+      mobileAlerts: deleteField(),
       user_id: userId,
       updated_at: serverTimestamp(),
     },

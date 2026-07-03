@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -18,7 +19,8 @@ import {
   LogOut, 
   User, 
   Settings, 
-  Menu
+  Menu,
+  Users
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -28,7 +30,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const isManager = user?.role === 'manager';
+  const canManageUsers = hasPermission(user, 'users:manage');
 
   const getInitials = (name: string) => {
     return name
@@ -42,10 +44,14 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     <header className="h-16 border-b border-border bg-card/95 px-4 flex items-center justify-between sticky top-0 z-50 shadow-sm backdrop-blur">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={onToggleSidebar} className="lg:hidden">
-          <Menu className="w-5 h-5" />
+          <Menu className="w-5 h-5 text-primary" />
         </Button>
         
-        <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-3 rounded-lg text-left transition-opacity hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+        >
           <div className="w-9 h-9 rounded-lg bg-foreground flex items-center justify-center ring-1 ring-primary/30">
             <MapPin className="w-5 h-5 text-primary" />
           </div>
@@ -53,7 +59,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             <h1 className="font-semibold text-foreground">RoadVision AI</h1>
             <p className="text-xs text-muted-foreground">Damage Detection System</p>
           </div>
-        </div>
+        </button>
       </div>
 
       <div className="flex items-center gap-3">
@@ -82,16 +88,22 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => navigate('/profile')} className="cursor-pointer">
-              <User className="mr-2 h-4 w-4" />
+              <User className="mr-2 h-4 w-4 text-primary" />
               <span>Profile</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
-              <Settings className="mr-2 h-4 w-4" />
+              <Settings className="mr-2 h-4 w-4 text-status-in-progress" />
               <span>Settings</span>
             </DropdownMenuItem>
+            {canManageUsers && (
+              <DropdownMenuItem onClick={() => navigate('/users')} className="cursor-pointer">
+                <Users className="mr-2 h-4 w-4 text-status-completed" />
+                <span>User Access</span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive cursor-pointer">
-              <LogOut className="mr-2 h-4 w-4" />
+              <LogOut className="mr-2 h-4 w-4 text-destructive" />
               <span>Log out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>

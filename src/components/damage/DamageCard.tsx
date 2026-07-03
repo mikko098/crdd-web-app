@@ -10,10 +10,12 @@ import { MapPin, Calendar, User, MessageSquare, Eye } from 'lucide-react';
 interface DamageCardProps {
   damage: RoadDamage;
   compact?: boolean;
+  locationLabel?: string;
 }
 
-const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false }) => {
+const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false, locationLabel }) => {
   const navigate = useNavigate();
+  const displayLocation = locationLabel ?? damage.location.address;
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -39,17 +41,17 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false }) => {
             <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0">
               <img 
                 src={damage.imageUrl} 
-                alt={`Damage ${damage.id}`}
+                alt={`Damage ${damage.captureId ?? damage.id}`}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="font-semibold text-sm">{damage.id}</span>
+                <span className="font-semibold text-sm">{damage.captureId ?? damage.id}</span>
                 <StatusBadge status={damage.status} size="sm" />
               </div>
               <p className="text-xs text-muted-foreground truncate mb-1">
-                {damage.location.address}
+                {displayLocation}
               </p>
               <SeverityIndicator severity={damage.severity} />
             </div>
@@ -61,7 +63,7 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false }) => {
               className="w-full"
               onClick={() => navigate(`/damage/${damage.id}`)}
             >
-              <Eye className="w-3 h-3 mr-1" />
+              <Eye className="w-3 h-3 mr-1 text-primary" />
               View Details
             </Button>
           </div>
@@ -76,7 +78,7 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false }) => {
         <div className="relative h-40 overflow-hidden">
           <img 
             src={damage.imageUrl} 
-            alt={`Damage ${damage.id}`}
+            alt={`Damage ${damage.captureId ?? damage.id}`}
             className="w-full h-full object-cover"
           />
           <div className="absolute top-3 left-3">
@@ -87,7 +89,7 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false }) => {
         <div className="p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-semibold text-lg">{damage.id}</h3>
+              <h3 className="font-semibold text-lg">{damage.captureId ?? damage.id}</h3>
               <span className="text-sm text-muted-foreground capitalize">
                 {damageTypeLabels[damage.type]}
               </span>
@@ -97,20 +99,20 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false }) => {
 
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="w-4 h-4" />
-              <span className="truncate">{damage.location.address}</span>
+              <MapPin className="w-4 h-4 text-primary" />
+              <span className="truncate">{displayLocation}</span>
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Calendar className="w-4 h-4" />
+              <Calendar className="w-4 h-4 text-status-in-progress" />
               <span>{formatDate(damage.dateReported)}</span>
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
-              <User className="w-4 h-4" />
+              <User className="w-4 h-4 text-status-completed" />
               <span>{damage.contributor.name}</span>
             </div>
             {damage.comment && (
               <div className="flex items-start gap-2 text-muted-foreground">
-                <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" />
+                <MessageSquare className="w-4 h-4 shrink-0 mt-0.5 text-status-pending" />
                 <span className="line-clamp-2">{damage.comment}</span>
               </div>
             )}
@@ -120,7 +122,7 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false }) => {
             className="w-full" 
             onClick={() => navigate(`/damage/${damage.id}`)}
           >
-            <Eye className="w-4 h-4 mr-2" />
+            <Eye className="w-4 h-4 mr-2 text-primary-foreground" />
             View Details
           </Button>
         </div>

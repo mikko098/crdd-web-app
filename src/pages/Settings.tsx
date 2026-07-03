@@ -2,21 +2,27 @@ import React, { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import { roleDescription } from '@/lib/permissions';
 import { defaultUserSettings, getUserSettings, saveUserSettings } from '@/services/userSettings';
 import { ThemePreference, UserSettings } from '@/types';
 import Header from '@/components/layout/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Bell, Moon, Globe, Shield, Smartphone } from 'lucide-react';
+import { ArrowLeft, Bell, Info, Moon, Globe, Shield } from 'lucide-react';
 
 const Settings: React.FC = () => {
-  const { isAuthenticated, isLoading, user, changePassword, resetPassword } = useAuth();
+  const {
+    isAuthenticated,
+    isLoading,
+    user,
+    resetPassword,
+  } = useAuth();
   const { setTheme } = useTheme();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -24,10 +30,6 @@ const Settings: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>(defaultUserSettings);
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [showPasswordFields, setShowPasswordFields] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -95,34 +97,6 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handleChangePassword = async () => {
-    if (!currentPassword || !newPassword) {
-      toast({
-        title: 'Both password fields are required',
-        description: 'Enter your current password and a new password.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      setIsChangingPassword(true);
-      await changePassword(currentPassword, newPassword);
-      setCurrentPassword('');
-      setNewPassword('');
-      setShowPasswordFields(false);
-      toast({ title: 'Password changed' });
-    } catch (err) {
-      toast({
-        title: 'Failed to change password',
-        description: err instanceof Error ? err.message : 'Please check your current password and try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsChangingPassword(false);
-    }
-  };
-
   const handleSendResetEmail = async () => {
     if (!user?.email) return;
 
@@ -160,18 +134,25 @@ const Settings: React.FC = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bell className="w-5 h-5" />
-                Notifications
+                Notification Preferences
               </CardTitle>
               <CardDescription>
-                Manage how you receive notifications
+                Store routing preferences for future alert delivery
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Delivery backend not connected</AlertTitle>
+                <AlertDescription>
+                  This preference is saved to Firestore. Automatic email alerts still need a backend worker before messages are sent.
+                </AlertDescription>
+              </Alert>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>Email Notifications</Label>
+                  <Label>Email alert preference</Label>
                   <p className="text-sm text-muted-foreground">
-                    Receive email updates about damage reports
+                    Mark this account as willing to receive email updates
                   </p>
                 </div>
                 <Switch
@@ -179,34 +160,25 @@ const Settings: React.FC = () => {
                   onCheckedChange={(checked) => updateSetting('emailNotifications', checked)}
                 />
               </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Push Notifications</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Receive push notifications in browser
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.pushNotifications}
-                  onCheckedChange={(checked) => updateSetting('pushNotifications', checked)}
-                />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="flex items-center gap-2">
-                    <Smartphone className="w-4 h-4" />
-                    Mobile Alerts
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    Receive urgent alerts on mobile devices
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.mobileAlerts}
-                  onCheckedChange={(checked) => updateSetting('mobileAlerts', checked)}
-                />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="w-5 h-5" />
+                Role Access
+              </CardTitle>
+              <CardDescription>
+                Your current dashboard permission level
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="text-sm font-medium capitalize">{user?.role ?? 'user'} role</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {roleDescription(user?.role ?? 'user')}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -280,66 +252,7 @@ const Settings: React.FC = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Two-Factor Authentication</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Store the preference now; enable MFA in Firebase Auth before enforcing it.
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.twoFactor}
-                  onCheckedChange={(checked) => updateSetting('twoFactor', checked)}
-                />
-              </div>
-              <Separator />
-              <div className="space-y-3 pt-2">
-                {showPasswordFields && (
-                  <div className="space-y-3 rounded-lg border p-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="current-password">Current Password</Label>
-                      <Input
-                        id="current-password"
-                        type="password"
-                        value={currentPassword}
-                        onChange={(event) => setCurrentPassword(event.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="new-password">New Password</Label>
-                      <Input
-                        id="new-password"
-                        type="password"
-                        value={newPassword}
-                        onChange={(event) => setNewPassword(event.target.value)}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setCurrentPassword('');
-                          setNewPassword('');
-                          setShowPasswordFields(false);
-                        }}
-                        disabled={isChangingPassword}
-                      >
-                        Cancel
-                      </Button>
-                      <Button onClick={handleChangePassword} disabled={isChangingPassword}>
-                        {isChangingPassword ? 'Saving...' : 'Save Password'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setShowPasswordFields(true)}
-                  disabled={showPasswordFields}
-                >
-                  Change Password
-                </Button>
+              <div className="space-y-3">
                 <Button variant="ghost" className="w-full" onClick={handleSendResetEmail}>
                   Email Password Reset Link
                 </Button>

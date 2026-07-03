@@ -1,8 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCapture } from '@/hooks/useCaptures';
+import { useCapture, useCaptureWorkflowEvents } from '@/hooks/useCaptures';
+import { useCreateMaintenanceTeam, useMaintenanceTeams } from '@/hooks/useMaintenanceTeams';
+import { hasPermission } from '@/lib/permissions';
 import { DamageStatus } from '@/types';
 import {
   addCaptureComment,
@@ -10,6 +12,7 @@ import {
   updateCaptureStatus,
   uploadCaptureAfterRepairPhoto,
 } from '@/services/captures';
+import { getNominatimLocationDisplayName } from '@/services/geocoding';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -41,8 +44,6 @@ import {
   Cpu,
 } from 'lucide-react';
 
-const teams = ['Team Alpha', 'Team Beta', 'Team Gamma', 'Team Delta'];
-
 const DamageDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -50,13 +51,38 @@ const DamageDetail: React.FC = () => {
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const [comment, setComment] = useState('');
   const [selectedTeam, setSelectedTeam] = useState('');
+  const [newTeamName, setNewTeamName] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<DamageStatus | ''>('');
+  const [displayLocation, setDisplayLocation] = useState('');
   const [savingAction, setSavingAction] = useState<string | null>(null);
   const afterRepairInputRef = useRef<HTMLInputElement>(null);
   const { data: damage, isLoading, isError, error } = useCapture(id);
+  const { data: teams = [], isLoading: isLoadingTeams } = useMaintenanceTeams();
+  const createTeam = useCreateMaintenanceTeam();
   const { toast } = useToast();
 
-  const isManager = user?.role === 'manager';
+  const canComment = hasPermission(user, 'reports:comment');
+  const canAssignTeam = hasPermission(user, 'reports:assign-team');
+  const canUpdateStatus = hasPermission(user, 'reports:update-status');
+  const canUploadAfterPhoto = hasPermission(user, 'reports:upload-after-photo');
+  const canViewWorkflowHistory = hasPermission(user, 'reports:view-workflow-history');
+  const canCreateTeams = hasPermission(user, 'teams:create');
+  const { data: workflowEvents = [] } = useCaptureWorkflowEvents(canViewWorkflowHistory ? id : undefined);
+
+  useEffect(() => {
+    if (!damage) return;
+
+    let isMounted = true;
+    setDisplayLocation(damage.location.address);
+
+    getNominatimLocationDisplayName(damage.location.lat, damage.location.lng).then((locationName) => {
+      if (isMounted) setDisplayLocation(locationName);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [damage]);
 
   if (isAuthLoading) {
     return <div className="min-h-screen bg-background" />;
@@ -123,18 +149,28 @@ const DamageDetail: React.FC = () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['captures'] }),
       queryClient.invalidateQueries({ queryKey: ['captures', id] }),
+      queryClient.invalidateQueries({ queryKey: ['capture-events', id] }),
     ]);
   };
 
   const handleAddComment = async () => {
     const trimmedComment = comment.trim();
     if (!trimmedComment || !damage || !user) return;
+    if (!canComment) {
+      toast({
+        title: 'Manager role required',
+        description: 'Only managers can add maintenance comments.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     try {
       setSavingAction('comment');
-      await addCaptureComment(damage.captureId ?? damage.id, {
+      await addCaptureComment(damage.id, {
         authorId: user.id,
         authorName: user.name,
+        authorRole: user.role,
         text: trimmedComment,
       });
       setComment('');
@@ -154,10 +190,18 @@ const DamageDetail: React.FC = () => {
 
   const handleAssignTeam = async () => {
     if (!selectedTeam || !damage) return;
+    if (!user || !canAssignTeam) {
+      toast({
+        title: 'Manager role required',
+        description: 'Only managers can assign maintenance teams.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     try {
       setSavingAction('team');
-      await assignCaptureTeam(damage.captureId ?? damage.id, selectedTeam);
+      await assignCaptureTeam(damage.id, selectedTeam, { id: user.id, name: user.name, role: user.role });
       setSelectedStatus('in-progress');
       await refreshCapture();
       toast({
@@ -176,12 +220,50 @@ const DamageDetail: React.FC = () => {
     }
   };
 
+  const handleCreateTeam = async () => {
+    const cleanName = newTeamName.trim();
+    if (!cleanName) return;
+    if (!user || !canCreateTeams) {
+      toast({
+        title: 'Manager role required',
+        description: 'Only managers can add maintenance teams.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await createTeam.mutateAsync({
+        name: cleanName,
+        actor: { id: user.id, name: user.name, role: user.role },
+      });
+      setSelectedTeam(cleanName);
+      setNewTeamName('');
+      toast({ title: 'Team added', description: `${cleanName} can now be assigned to reports.` });
+    } catch (err) {
+      console.error('Failed to create team:', err);
+      toast({
+        title: 'Failed to add team',
+        description: 'Check your Firestore permissions and try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleUpdateStatus = async () => {
     if (!selectedStatus || !damage) return;
+    if (!user || !canUpdateStatus) {
+      toast({
+        title: 'Manager role required',
+        description: 'Only managers can update repair status.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     try {
       setSavingAction('status');
-      await updateCaptureStatus(damage.captureId ?? damage.id, selectedStatus);
+      await updateCaptureStatus(damage.id, selectedStatus, { id: user.id, name: user.name, role: user.role });
       await refreshCapture();
       toast({
         title: 'Status updated',
@@ -202,6 +284,15 @@ const DamageDetail: React.FC = () => {
   const handleAfterRepairUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !damage) return;
+    if (!user || !canUploadAfterPhoto) {
+      toast({
+        title: 'Manager role required',
+        description: 'Only managers can upload after-repair evidence.',
+        variant: 'destructive',
+      });
+      event.target.value = '';
+      return;
+    }
 
     if (!file.type.startsWith('image/')) {
       toast({
@@ -215,7 +306,7 @@ const DamageDetail: React.FC = () => {
 
     try {
       setSavingAction('after-repair-photo');
-      await uploadCaptureAfterRepairPhoto(damage.captureId ?? damage.id, file);
+      await uploadCaptureAfterRepairPhoto(damage.id, file, { id: user.id, name: user.name, role: user.role });
       setSelectedStatus('completed');
       await refreshCapture();
       toast({
@@ -243,7 +334,7 @@ const DamageDetail: React.FC = () => {
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <div>
-          <h1 className="font-semibold">Damage Report {damage.id}</h1>
+          <h1 className="font-semibold">Damage Report {damage.captureId ?? damage.id}</h1>
           <p className="text-xs text-muted-foreground">{damageTypeLabels[damage.type]}</p>
         </div>
         <div className="ml-auto">
@@ -286,7 +377,7 @@ const DamageDetail: React.FC = () => {
                         />
                       </div>
                     </div>
-                  ) : isManager ? (
+                  ) : canUploadAfterPhoto ? (
                     <div>
                       <p className="text-sm font-medium mb-2">After Repair</p>
                       <div className="aspect-video rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center">
@@ -339,43 +430,75 @@ const DamageDetail: React.FC = () => {
             </Card>
 
             {/* Comments section */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Add Comment</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <Textarea
-                    placeholder="Write your comment here..."
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    rows={3}
-                  />
-                  <Button onClick={handleAddComment} disabled={!comment.trim() || savingAction === 'comment'}>
-                    <Send className="w-4 h-4 mr-2" />
-                    {savingAction === 'comment' ? 'Saving...' : 'Submit Comment'}
-                  </Button>
-                </div>
-                {damage.maintenanceComments?.length ? (
-                  <div className="mt-5 space-y-3">
-                    {damage.maintenanceComments.map((maintenanceComment) => (
-                      <div
-                        key={`${maintenanceComment.authorId}-${maintenanceComment.createdAt}`}
-                        className="rounded-lg border bg-muted/40 p-3"
-                      >
-                        <div className="flex items-center justify-between gap-3 text-sm">
-                          <span className="font-medium">{maintenanceComment.authorName}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(maintenanceComment.createdAt).toLocaleString()}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-sm text-muted-foreground">{maintenanceComment.text}</p>
-                      </div>
-                    ))}
+            {canComment && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Add Maintenance Comment</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <Textarea
+                      placeholder="Write your comment here..."
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      rows={3}
+                    />
+                    <Button onClick={handleAddComment} disabled={!comment.trim() || savingAction === 'comment'}>
+                      <Send className="w-4 h-4 mr-2" />
+                      {savingAction === 'comment' ? 'Saving...' : 'Submit Comment'}
+                    </Button>
                   </div>
-                ) : null}
-              </CardContent>
-            </Card>
+                  {damage.maintenanceComments?.length ? (
+                    <div className="mt-5 space-y-3">
+                      {damage.maintenanceComments.map((maintenanceComment) => (
+                        <div
+                          key={`${maintenanceComment.authorId}-${maintenanceComment.createdAt}`}
+                          className="rounded-lg border bg-muted/40 p-3"
+                        >
+                          <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="font-medium">{maintenanceComment.authorName}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(maintenanceComment.createdAt).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm text-muted-foreground">{maintenanceComment.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            )}
+
+            {canViewWorkflowHistory && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Workflow History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {workflowEvents.length ? (
+                    <div className="space-y-3">
+                      {workflowEvents.map((event) => (
+                        <div key={event.id} className="rounded-lg border bg-muted/40 p-3">
+                          <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="font-medium">{event.action.replace(/-/g, ' ')}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(event.createdAt).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">By {event.actorName}</p>
+                          {event.details ? (
+                            <p className="mt-2 text-sm text-muted-foreground">{event.details}</p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No workflow history recorded yet.</p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Sidebar */}
@@ -415,7 +538,7 @@ const DamageDetail: React.FC = () => {
                   <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
                   <div>
                     <p className="text-sm font-medium">Location</p>
-                    <p className="text-sm text-muted-foreground">{damage.location.address}</p>
+                    <p className="text-sm text-muted-foreground">{displayLocation || damage.location.address}</p>
                     <p className="text-xs text-muted-foreground mt-1">
                       {damage.location.lat.toFixed(4)}, {damage.location.lng.toFixed(4)}
                     </p>
@@ -494,7 +617,7 @@ const DamageDetail: React.FC = () => {
             </Card>
 
             {/* Manager actions */}
-            {isManager && (
+            {(canAssignTeam || canUpdateStatus) && (
               <Card>
                 <CardHeader>
                   <CardTitle>Manager Actions</CardTitle>
@@ -508,7 +631,7 @@ const DamageDetail: React.FC = () => {
                       </SelectTrigger>
                       <SelectContent>
                         {teams.map(team => (
-                          <SelectItem key={team} value={team}>{team}</SelectItem>
+                          <SelectItem key={team.id} value={team.name}>{team.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -518,8 +641,25 @@ const DamageDetail: React.FC = () => {
                       onClick={handleAssignTeam}
                       disabled={!selectedTeam || savingAction === 'team'}
                     >
-                      {savingAction === 'team' ? 'Assigning...' : 'Assign Team'}
+                      {savingAction === 'team' ? 'Assigning...' : isLoadingTeams ? 'Loading Teams...' : 'Assign Team'}
                     </Button>
+                    {canCreateTeams && (
+                      <div className="grid grid-cols-[1fr_auto] gap-2 pt-2">
+                        <Input
+                          value={newTeamName}
+                          onChange={(event) => setNewTeamName(event.target.value)}
+                          placeholder="Add maintenance team"
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={handleCreateTeam}
+                          disabled={!newTeamName.trim() || createTeam.isPending}
+                        >
+                          {createTeam.isPending ? 'Adding...' : 'Add'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
                   <Separator />
