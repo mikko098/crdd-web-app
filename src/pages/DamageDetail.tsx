@@ -12,7 +12,6 @@ import {
   updateCaptureStatus,
   uploadCaptureAfterRepairPhoto,
 } from '@/services/captures';
-import { getNominatimLocationDisplayName } from '@/services/geocoding';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,10 +24,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import StatusBadge from '@/components/damage/StatusBadge';
 import SeverityIndicator from '@/components/damage/SeverityIndicator';
+import DamageImageWithDetections from '@/components/damage/DamageImageWithDetections';
+import { InferenceDetection } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft,
@@ -37,11 +43,11 @@ import {
   User,
   MessageSquare,
   Car,
-  Users,
   Camera,
   Send,
   AlertTriangle,
   Cpu,
+  Maximize2,
 } from 'lucide-react';
 
 const DamageDetail: React.FC = () => {
@@ -55,6 +61,12 @@ const DamageDetail: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState<DamageStatus | ''>('');
   const [displayLocation, setDisplayLocation] = useState('');
   const [savingAction, setSavingAction] = useState<string | null>(null);
+  const [expandedImage, setExpandedImage] = useState<{
+    src: string;
+    alt: string;
+    title: string;
+    detections?: InferenceDetection[];
+  } | null>(null);
   const afterRepairInputRef = useRef<HTMLInputElement>(null);
   const { data: damage, isLoading, isError, error } = useCapture(id);
   const { data: teams = [], isLoading: isLoadingTeams } = useMaintenanceTeams();
@@ -71,17 +83,7 @@ const DamageDetail: React.FC = () => {
 
   useEffect(() => {
     if (!damage) return;
-
-    let isMounted = true;
     setDisplayLocation(damage.location.address);
-
-    getNominatimLocationDisplayName(damage.location.lat, damage.location.lng).then((locationName) => {
-      if (isMounted) setDisplayLocation(locationName);
-    });
-
-    return () => {
-      isMounted = false;
-    };
   }, [damage]);
 
   if (isAuthLoading) {
@@ -95,7 +97,7 @@ const DamageDetail: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-secondary/30 p-6">
-        <div className="max-w-6xl mx-auto space-y-6">
+        <div className="mx-auto max-w-[1500px] space-y-6">
           <Skeleton className="h-10 w-64" />
           <Skeleton className="h-80 w-full" />
           <Skeleton className="h-48 w-full" />
@@ -131,6 +133,18 @@ const DamageDetail: React.FC = () => {
     });
   };
 
+  const formatModelName = (model?: string) => {
+    if (!model?.trim()) return 'Pending';
+
+    const fileName = model.split(/[\\/]/).pop() ?? model;
+    const withoutExtension = fileName.replace(/\.[^.]+$/, '');
+    const readable = withoutExtension.replace(/[_-]+/g, ' ').trim();
+    if (!readable) return 'Pending';
+
+    const lower = readable.toLowerCase();
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  };
+
   const damageTypeLabels: Record<string, string> = {
     pothole: 'Pothole',
     'transverse-crack': 'Transverse Crack',
@@ -144,6 +158,8 @@ const DamageDetail: React.FC = () => {
     medium: { label: 'Medium Traffic', color: 'text-status-pending' },
     low: { label: 'Low Traffic', color: 'text-status-completed' },
   };
+  const damageDetections = damage.inferenceResults ?? [];
+  const hasDamageDetections = damageDetections.some((detection) => Array.isArray(detection.bbox) && detection.bbox.length >= 4);
 
   const refreshCapture = async () => {
     await Promise.all([
@@ -337,45 +353,92 @@ const DamageDetail: React.FC = () => {
           <h1 className="font-semibold">Damage Report {damage.captureId ?? damage.id}</h1>
           <p className="text-xs text-muted-foreground">{damageTypeLabels[damage.type]}</p>
         </div>
-        <div className="ml-auto">
-          <StatusBadge status={damage.status} />
-        </div>
       </header>
 
-      <div className="max-w-6xl mx-auto p-4 lg:p-6">
-        <div className="grid lg:grid-cols-3 gap-6">
+      <div className="mx-auto max-w-[1500px] p-4 lg:p-6">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,2.2fr)_minmax(340px,0.8fr)]">
           {/* Main content */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="min-w-0 space-y-6">
             {/* Images */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Camera className="w-5 h-5" />
-                  Damage Images
-                </CardTitle>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Camera className="w-5 h-5" />
+                    Damage Images
+                  </CardTitle>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusBadge status={damage.status} size="sm" />
+                    <SeverityIndicator severity={damage.severity} />
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm font-medium mb-2">Reported Damage</p>
-                    <div className="aspect-video rounded-lg overflow-hidden bg-muted">
-                      <img
+                    <button
+                      type="button"
+                      className="group relative block aspect-video w-full overflow-hidden rounded-lg bg-muted text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      onClick={() =>
+                        setExpandedImage({
+                          src: damage.imageUrl,
+                          alt: 'Reported damage',
+                          title: 'Reported Damage',
+                          detections: damageDetections,
+                        })
+                      }
+                    >
+                      <DamageImageWithDetections
                         src={damage.imageUrl}
-                        alt="Damage"
-                        className="w-full h-full object-cover"
+                        alt="Reported damage"
+                        detections={damageDetections}
+                        className="h-full w-full"
+                        showLabels
                       />
-                    </div>
+                      <span className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                        <Maximize2 className="h-4 w-4" />
+                        <span className="sr-only">Expand reported damage image</span>
+                      </span>
+                    </button>
+                    {hasDamageDetections && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 w-full"
+                        onClick={() =>
+                          setExpandedImage({
+                            src: damage.imageUrl,
+                            alt: 'Original reported damage',
+                            title: 'Original Reported Damage',
+                          })
+                        }
+                      >
+                        View original image
+                      </Button>
+                    )}
                   </div>
                   {damage.afterRepairImageUrl ? (
                     <div>
                       <p className="text-sm font-medium mb-2">After Repair</p>
-                      <div className="aspect-video rounded-lg overflow-hidden bg-muted">
-                        <img
-                          src={damage.afterRepairImageUrl}
-                          alt="After Repair"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
+                      <button
+                        type="button"
+                        className="group relative block aspect-video w-full overflow-hidden rounded-lg bg-muted text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        onClick={() =>
+                          setExpandedImage({
+                            src: damage.afterRepairImageUrl!,
+                            alt: 'After repair',
+                            title: 'After Repair',
+                          })
+                        }
+                      >
+                        <img src={damage.afterRepairImageUrl} alt="After repair" className="h-full w-full object-cover" />
+                        <span className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                          <Maximize2 className="h-4 w-4" />
+                          <span className="sr-only">Expand after repair image</span>
+                        </span>
+                      </button>
                     </div>
                   ) : canUploadAfterPhoto ? (
                     <div>
@@ -407,6 +470,53 @@ const DamageDetail: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            <Dialog open={expandedImage !== null} onOpenChange={(open) => !open && setExpandedImage(null)}>
+              <DialogContent className="flex max-h-[92vh] max-w-5xl flex-col gap-3 overflow-hidden p-4 sm:rounded-lg">
+                <div className="shrink-0 pr-8">
+                  <DialogTitle>{expandedImage?.title}</DialogTitle>
+                </div>
+                {expandedImage && (
+                  <>
+                    <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                      {expandedImage.detections?.length ? (
+                        <DamageImageWithDetections
+                          src={expandedImage.src}
+                          alt={expandedImage.alt}
+                          detections={expandedImage.detections}
+                          fit="contain"
+                          showLabels
+                          className="h-[76vh] max-h-[720px] w-full"
+                        />
+                      ) : (
+                        <img
+                          src={expandedImage.src}
+                          alt={expandedImage.alt}
+                          className="max-h-[76vh] max-w-full object-contain"
+                        />
+                      )}
+                    </div>
+                    {expandedImage.detections?.length ? (
+                      <div className="flex shrink-0 justify-end border-t pt-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            setExpandedImage({
+                              src: expandedImage.src,
+                              alt: 'Original reported damage',
+                              title: 'Original Reported Damage',
+                            })
+                          }
+                        >
+                          View original image
+                        </Button>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </DialogContent>
+            </Dialog>
 
             {/* Description */}
             <Card>
@@ -509,42 +619,6 @@ const DamageDetail: React.FC = () => {
                 <CardTitle>Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Severity</span>
-                  <SeverityIndicator severity={damage.severity} />
-                </div>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Status</span>
-                  <StatusBadge status={damage.status} size="sm" />
-                </div>
-                <Separator />
-                <div className="flex items-start gap-3">
-                  <Cpu className="w-4 h-4 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">Inference</p>
-                    <p className="text-sm text-muted-foreground">
-                      {damage.hasInferenced ? `${damage.inferenceModel ?? 'Model'} completed` : 'Waiting for inference'}
-                    </p>
-                    {typeof damage.inferenceTimeMs === 'number' && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {damage.inferenceTimeMs.toFixed(1)} ms
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <Separator />
-                <div className="flex items-start gap-3">
-                  <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">Location</p>
-                    <p className="text-sm text-muted-foreground">{displayLocation || damage.location.address}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {damage.location.lat.toFixed(4)}, {damage.location.lng.toFixed(4)}
-                    </p>
-                  </div>
-                </div>
-                <Separator />
                 <div className="flex items-start gap-3">
                   <Calendar className="w-4 h-4 text-muted-foreground mt-0.5" />
                   <div>
@@ -554,10 +628,10 @@ const DamageDetail: React.FC = () => {
                 </div>
                 <Separator />
                 <div className="flex items-start gap-3">
-                  <User className="w-4 h-4 text-muted-foreground mt-0.5" />
+                  <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium">Contributor</p>
-                    <p className="text-sm text-muted-foreground">{damage.contributor.name}</p>
+                    <p className="text-sm font-medium">Location</p>
+                    <p className="text-sm text-muted-foreground">{displayLocation || damage.location.address}</p>
                   </div>
                 </div>
                 <Separator />
@@ -576,43 +650,26 @@ const DamageDetail: React.FC = () => {
                         <p className="text-xs text-muted-foreground">
                           {damage.trafficCongestion.speed} km/h - {damage.trafficCongestion.impact}
                         </p>
-                        <p className="text-xs text-muted-foreground capitalize">
-                          Source: {damage.trafficCongestion.source}
-                        </p>
                       </div>
                     )}
                   </div>
                 </div>
-                {typeof damage.accuracy === 'number' && (
-                  <>
-                    <Separator />
-                    <div>
-                      <p className="text-sm font-medium">GPS Accuracy</p>
-                      <p className="text-sm text-muted-foreground">{damage.accuracy.toFixed(2)} meters</p>
-                    </div>
-                  </>
-                )}
-                {damage.workerId && (
-                  <>
-                    <Separator />
-                    <div>
-                      <p className="text-sm font-medium">Worker</p>
-                      <p className="text-sm text-muted-foreground">{damage.workerId}</p>
-                    </div>
-                  </>
-                )}
-                {damage.assignedTeam && (
-                  <>
-                    <Separator />
-                    <div className="flex items-start gap-3">
-                      <Users className="w-4 h-4 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium">Assigned Team</p>
-                        <p className="text-sm text-muted-foreground">{damage.assignedTeam}</p>
-                      </div>
-                    </div>
-                  </>
-                )}
+                <Separator />
+                <div className="flex items-start gap-3">
+                  <User className="w-4 h-4 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium">Contributor</p>
+                    <p className="text-sm text-muted-foreground">{damage.contributor.name}</p>
+                  </div>
+                </div>
+                <Separator />
+                <div className="flex items-start gap-3">
+                  <Cpu className="w-4 h-4 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium">Inference Model</p>
+                    <p className="text-sm text-muted-foreground">{formatModelName(damage.inferenceModel)}</p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 

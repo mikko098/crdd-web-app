@@ -9,6 +9,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { AlertCircle, Mail, Lock, User, MapPin, TrafficCone } from 'lucide-react';
 
+const invalidCredentialCodes = new Set([
+  'auth/invalid-credential',
+  'auth/invalid-email',
+  'auth/user-not-found',
+  'auth/wrong-password',
+]);
+
+const isInvalidCredentialError = (err: unknown) =>
+  typeof err === 'object' &&
+  err !== null &&
+  'code' in err &&
+  typeof (err as { code?: unknown }).code === 'string' &&
+  invalidCredentialCodes.has((err as { code: string }).code);
+
 const LoginForm: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,10 +46,10 @@ const LoginForm: React.FC = () => {
       if (result.success) {
         navigate('/dashboard');
       } else {
-        setError('Invalid Firebase credentials.');
+        setError('Invalid credentials.');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign in failed. Please try again.');
+      setError(isInvalidCredentialError(err) ? 'Invalid credentials.' : 'Sign in failed. Please try again.');
     } finally {
       setIsLoading(false);
     }

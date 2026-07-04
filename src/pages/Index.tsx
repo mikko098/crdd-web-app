@@ -6,6 +6,9 @@ import {
   BarChart3,
   Camera,
   CheckCircle2,
+  Clock3,
+  FileText,
+  LocateFixed,
   MapPinned,
   Route,
   ShieldCheck,
@@ -14,100 +17,124 @@ import {
 
 const sampleImage = (name: string) => `${import.meta.env.BASE_URL}sample_images/${name}`;
 
+const reportSteps = [
+  'Review incoming road reports',
+  'Confirm the mapped location',
+  'Prioritize repair action',
+  'Track updates to completion',
+];
+
+const activityItems = [
+  {
+    title: 'Pothole detected near Jalan Ayer Keroh',
+    meta: 'High severity - awaiting assignment',
+    tone: 'text-red-700 bg-red-50 border-red-200',
+  },
+  {
+    title: 'Longitudinal crack report updated',
+    meta: 'Traffic impact added by reviewer',
+    tone: 'text-amber-700 bg-amber-50 border-amber-200',
+  },
+  {
+    title: 'Repair evidence submitted',
+    meta: 'Ready for manager verification',
+    tone: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+  },
+];
+
 const Index = () => {
   const { isAuthenticated, isLoading } = useAuth();
   const destination = isAuthenticated ? '/dashboard' : '/login';
+  const ctaLabel = isAuthenticated ? 'Open Dashboard' : 'Sign in to Dashboard';
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/15 bg-foreground/45 backdrop-blur-md">
-        <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-3 text-white">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20">
-              <MapPinned className="h-5 w-5" />
-            </span>
-            <span>
-              <span className="block text-sm font-semibold leading-none">RoadVision AI</span>
-              <span className="block text-xs text-white/70">Maintenance Dashboard</span>
-            </span>
-          </Link>
-
-          <div className="flex items-center gap-2">
-            <Button asChild variant="ghost" className="hidden text-white hover:bg-white/10 hover:text-white sm:inline-flex">
-              <Link to="/login">Sign In</Link>
-            </Button>
-            <Button asChild className="bg-white text-slate-950 hover:bg-white/90" disabled={isLoading}>
-              <Link to={destination}>
-                {isAuthenticated ? 'Open Dashboard' : 'Enter Dashboard'}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
-        </nav>
-      </header>
-
       <main>
-        <section className="relative flex min-h-[86vh] items-center overflow-hidden">
+        <section className="relative flex min-h-[88vh] items-center overflow-hidden">
           <img
             src={sampleImage('dmg_003.jpg')}
             alt="Detected road surface damage"
             className="absolute inset-0 h-full w-full object-cover"
           />
-          <div className="absolute inset-0 bg-slate-950/70" />
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,23,42,0.92)_0%,rgba(15,23,42,0.68)_48%,rgba(15,23,42,0.28)_100%)]" />
+          <div className="absolute inset-0 bg-slate-950/75" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,23,42,0.96)_0%,rgba(15,23,42,0.82)_50%,rgba(15,23,42,0.38)_100%)]" />
 
-          <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 pt-28 sm:px-6 lg:grid-cols-[1.02fr_0.98fr] lg:px-8">
-            <div className="max-w-3xl pb-12 text-white">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-sm text-white/85">
-                <TrafficCone className="h-4 w-4 text-amber-300" />
-                Road damage intelligence for maintenance teams
+          <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[0.95fr_1.05fr] lg:px-8">
+            <div className="max-w-3xl py-12 text-white">
+              <Link to="/" className="mb-10 inline-flex items-center gap-3 text-white">
+                <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-amber-400 text-slate-950 shadow-lg shadow-amber-950/20">
+                  <MapPinned className="h-6 w-6" />
+                </span>
+                <span>
+                  <span className="block text-base font-semibold leading-none">RoadVision AI</span>
+                  <span className="block text-sm text-white/70">Road maintenance dashboard</span>
+                </span>
+              </Link>
+
+              <div className="mb-5 inline-flex items-center gap-2 rounded-md border border-amber-300/40 bg-amber-300/12 px-3 py-2 text-sm font-medium text-amber-100">
+                <TrafficCone className="h-4 w-4" />
+                Map reports. Prioritize repairs. Close the loop.
               </div>
-              <h1 className="max-w-4xl text-5xl font-bold leading-tight sm:text-6xl lg:text-7xl">
-                RoadVision AI
+              <h1 className="max-w-4xl text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl">
+                A clearer way to manage road damage reports.
               </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-white/78">
-                A web command center for turning field captures into prioritized road maintenance work,
-                with live map review, AI detection context, traffic impact, and repair follow-up in one place.
+              <p className="mt-6 max-w-2xl text-lg leading-8 text-white/80">
+                RoadVision AI brings field captures, detection results, mapped locations, and repair status
+                into one focused workspace for maintenance teams.
               </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Button asChild size="lg" className="bg-white text-slate-950 hover:bg-white/90" disabled={isLoading}>
+              <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
+                <Button asChild size="lg" className="bg-amber-400 text-slate-950 hover:bg-amber-300" disabled={isLoading}>
                   <Link to={destination}>
-                    {isAuthenticated ? 'Open Dashboard' : 'View Dashboard'}
+                    {ctaLabel}
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="border-white/35 bg-white/5 text-white hover:bg-white/15 hover:text-white">
-                  <a href="#overview">Explore Platform</a>
-                </Button>
+                <p className="max-w-sm text-sm leading-6 text-white/65">
+                  One secure entry point for reviewers, managers, and maintenance staff.
+                </p>
+              </div>
+              <div className="mt-10 grid max-w-2xl gap-3 text-sm text-white/80 sm:grid-cols-3">
+                {[
+                  ['142', 'active reports'],
+                  ['38', 'awaiting repair'],
+                  ['91%', 'verified with photos'],
+                ].map(([value, label]) => (
+                  <div key={label} className="border-l border-white/20 pl-4">
+                    <div className="text-2xl font-semibold text-white">{value}</div>
+                    <div>{label}</div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="hidden items-end justify-end lg:flex">
-              <div className="w-full max-w-xl rounded-lg border border-white/15 bg-white/10 p-4 shadow-2xl backdrop-blur-md">
-                <div className="overflow-hidden rounded-md border border-white/10 bg-slate-950/70">
-                  <div className="grid grid-cols-[0.75fr_1.25fr]">
-                    <div className="space-y-3 border-r border-white/10 p-4">
-                      {['Urgent reports', 'Team assignment', 'Repair progress'].map((item, index) => (
-                        <div key={item} className="rounded-md bg-white/10 p-3">
-                          <div className="mb-2 h-2 w-16 rounded-full bg-white/50" />
-                          <div className="flex items-center justify-between text-xs text-white/75">
-                            <span>{item}</span>
-                            <span className={index === 0 ? 'text-red-300' : index === 1 ? 'text-amber-300' : 'text-emerald-300'}>
-                              {index === 0 ? '12' : index === 1 ? '8' : '24'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+            <div className="flex items-center justify-end">
+              <div className="w-full max-w-xl rounded-lg border border-white/15 bg-white p-4 shadow-2xl shadow-slate-950/35">
+                <div className="rounded-md border bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">Maintenance report queue</p>
+                      <p className="mt-1 text-xs text-slate-500">Today&apos;s mapped road damage cases</p>
                     </div>
-                    <div className="relative min-h-72">
+                    <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+                      Live
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex min-h-11 items-center gap-3 rounded-md border bg-white px-3 text-sm text-slate-600">
+                    <LocateFixed className="h-4 w-4 text-primary" />
+                    Filter by district, road, or report ID
+                  </div>
+
+                  <div className="mt-4 overflow-hidden rounded-md border bg-white">
+                    <div className="relative min-h-64">
                       <img
                         src={sampleImage('dmg_001.jpg')}
                         alt="Road damage preview in dashboard"
-                        className="absolute inset-0 h-full w-full object-cover opacity-80"
+                        className="absolute inset-0 h-full w-full object-cover"
                       />
-                      <div className="absolute inset-0 bg-slate-950/35" />
-                      <div className="absolute bottom-4 left-4 right-4 rounded-md bg-white/90 p-4 text-slate-950 shadow-lg">
-                        <div className="flex items-center justify-between">
+                      <div className="absolute inset-0 bg-slate-950/25" />
+                      <div className="absolute bottom-4 left-4 right-4 rounded-md bg-white p-4 text-slate-950 shadow-lg">
+                        <div className="flex items-center justify-between gap-3">
                           <span className="text-sm font-semibold">Pothole detected</span>
                           <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700">Urgent</span>
                         </div>
@@ -115,67 +142,84 @@ const Index = () => {
                       </div>
                     </div>
                   </div>
+
+                  <div className="mt-4 grid gap-2">
+                    {activityItems.map((item) => (
+                      <div key={item.title} className="flex items-start gap-3 rounded-md border bg-white p-3">
+                        <span className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-md border ${item.tone}`}>
+                          <FileText className="h-4 w-4" />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-medium text-slate-950">{item.title}</span>
+                          <span className="block text-xs text-slate-500">{item.meta}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        <section id="overview" className="border-b bg-background py-16 sm:py-20">
+        <section className="border-b bg-background py-14 sm:py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="grid gap-5 md:grid-cols-3">
-              {[
-                {
-                  icon: Camera,
-                  title: 'Capture Review',
-                  text: 'Inspect uploaded road images with detection summaries and contributor context.',
-                },
-                {
-                  icon: Route,
-                  title: 'Location Priority',
-                  text: 'Combine severity, map position, and traffic impact to decide what needs attention first.',
-                },
-                {
-                  icon: CheckCircle2,
-                  title: 'Repair Workflow',
-                  text: 'Assign teams, update repair status, add comments, and attach after-repair evidence.',
-                },
-              ].map((feature) => (
-                <div key={feature.title} className="rounded-lg border bg-card p-6 shadow-sm">
-                  <feature.icon className="h-7 w-7 text-primary" />
-                  <h2 className="mt-5 text-lg font-semibold">{feature.title}</h2>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{feature.text}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+            <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+              <div>
+                <p className="text-sm font-semibold uppercase text-primary">Operational Flow</p>
+                <h2 className="mt-3 text-3xl font-bold tracking-normal sm:text-4xl">
+                  Structured like a public works reporting desk.
+                </h2>
+                <p className="mt-4 text-muted-foreground">
+                  A calm, direct workflow for reviewing field evidence, confirming where the issue is,
+                  and moving the repair forward.
+                </p>
+              </div>
 
-        <section className="bg-secondary/45 py-16 sm:py-20">
-          <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Dashboard Preview</p>
-              <h2 className="mt-3 text-3xl font-bold sm:text-4xl">Built around the real maintenance workflow.</h2>
-              <p className="mt-4 text-muted-foreground">
-                RoadVision connects mobile reports, Firestore records, inference results, and maintenance actions
-                without requiring the dashboard to talk directly to the local backend.
-              </p>
-              <div className="mt-7 grid gap-3 text-sm">
-                {[
-                  ['Live map and list views', MapPinned],
-                  ['AI detection and severity signals', BarChart3],
-                  ['Firebase-backed account and workflow actions', ShieldCheck],
-                ].map(([label, Icon]) => (
-                  <div key={label as string} className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="font-medium">{label as string}</span>
+              <div className="grid gap-3 sm:grid-cols-4">
+                {reportSteps.map((step, index) => (
+                  <div key={step} className="rounded-lg border bg-card p-4 shadow-sm">
+                    <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
+                      {index + 1}
+                    </div>
+                    <p className="text-sm font-medium leading-6">{step}</p>
                   </div>
                 ))}
               </div>
             </div>
+          </div>
+        </section>
 
+        <section className="border-b bg-card py-14 sm:py-16">
+          <div className="mx-auto grid max-w-7xl gap-5 px-4 sm:px-6 md:grid-cols-3 lg:px-8">
+            {[
+              {
+                icon: Camera,
+                title: 'Evidence first',
+                text: 'Field images, AI detection labels, severity, and contributor details stay together.',
+              },
+              {
+                icon: Route,
+                title: 'Map led',
+                text: 'Location, traffic impact, and district context shape the repair priority.',
+              },
+              {
+                icon: CheckCircle2,
+                title: 'Accountable repairs',
+                text: 'Status changes, assignments, comments, and after-repair proof remain traceable.',
+              },
+            ].map((feature) => (
+              <div key={feature.title} className="rounded-lg border bg-background p-6 shadow-sm">
+                <feature.icon className="h-7 w-7 text-primary" />
+                <h2 className="mt-5 text-lg font-semibold">{feature.title}</h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{feature.text}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="bg-secondary/45 py-14 sm:py-16">
+          <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8">
             <div className="grid gap-4 sm:grid-cols-2">
               <img
                 src={sampleImage('dmg_002.jpg')}
@@ -188,23 +232,30 @@ const Index = () => {
                 className="h-64 w-full rounded-lg object-cover shadow-card sm:mt-10"
               />
             </div>
-          </div>
-        </section>
 
-        <section className="bg-foreground py-12 text-background">
-          <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-4 sm:px-6 md:flex-row md:items-center lg:px-8">
             <div>
-              <h2 className="text-2xl font-bold">Ready to manage road reports?</h2>
-              <p className="mt-2 text-sm text-background/70">
-                Continue into the web dashboard to review active captures and maintenance tasks.
+              <p className="text-sm font-semibold uppercase text-primary">Dashboard Preview</p>
+              <h2 className="mt-3 text-3xl font-bold sm:text-4xl">Professional review tools without visual clutter.</h2>
+              <p className="mt-4 text-muted-foreground">
+                The interface foregrounds the map, evidence, repair status, and staff responsibilities
+                instead of repeating the same sign-in action across the page.
               </p>
+              <div className="mt-7 grid gap-3 text-sm">
+                {[
+                  ['Live map and list views', MapPinned],
+                  ['AI detection and severity signals', BarChart3],
+                  ['Role-based workflow actions', ShieldCheck],
+                  ['Repair progress monitoring', Clock3],
+                ].map(([label, Icon]) => (
+                  <div key={label as string} className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="font-medium">{label as string}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <Button asChild size="lg" className="bg-background text-foreground hover:bg-background/90" disabled={isLoading}>
-              <Link to={destination}>
-                {isAuthenticated ? 'Open Dashboard' : 'Sign In to Continue'}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
           </div>
         </section>
       </main>
