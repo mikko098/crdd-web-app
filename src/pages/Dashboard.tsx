@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { AlertTriangle, BarChart3, Download, List, Map } from 'lucide-react';
+import { LocationSearchResult } from '@/services/geocoding';
 
 type DashboardView = 'overview' | 'map' | 'list';
 
@@ -28,8 +29,9 @@ interface Filters {
   types: DamageType[];
   statuses: DamageStatus[];
   severities: DamageSeverity[];
-  showNoDetections: boolean;
 }
+
+const NO_DAMAGE_TYPE: DamageType = 'no-damage';
 
 const Dashboard: React.FC = () => {
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
@@ -40,10 +42,10 @@ const Dashboard: React.FC = () => {
     types: [],
     statuses: [],
     severities: [],
-    showNoDetections: false,
   });
   const [sortBy, setSortBy] = useState('date-desc');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedSearchLocation, setSelectedSearchLocation] = useState<LocationSearchResult | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
@@ -53,32 +55,17 @@ const Dashboard: React.FC = () => {
 
   const mapReportPool = useMemo(() => {
     let result = [...damages];
+    const includeNoDamage = filters.types.includes(NO_DAMAGE_TYPE);
 
-    if (!filters.showNoDetections) {
-      result = result.filter(d => (d.inferenceResults?.length ?? 0) > 0);
+    if (!includeNoDamage) {
+      result = result.filter(d => d.type !== NO_DAMAGE_TYPE);
     }
 
     return result;
-  }, [damages, filters.showNoDetections]);
+  }, [damages, filters.types]);
 
   const filteredDamages = useMemo(() => {
     let result = [...mapReportPool];
-
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-    if (normalizedSearch) {
-      result = result.filter(d => [
-        d.captureId,
-        d.id,
-        d.type,
-        d.status,
-        d.severity,
-        d.location.address,
-        d.contributor.name,
-        d.assignedTeam,
-        d.description,
-        d.comment,
-      ].some(value => String(value ?? '').toLowerCase().includes(normalizedSearch)));
-    }
 
     if (dateFrom) {
       const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
@@ -129,7 +116,7 @@ const Dashboard: React.FC = () => {
     });
 
     return result;
-  }, [dateFrom, dateTo, filters.severities, filters.statuses, filters.types, mapReportPool, searchTerm, sortBy]);
+  }, [dateFrom, dateTo, filters.severities, filters.statuses, filters.types, mapReportPool, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDamages.length / pageSize));
   const pagedDamages = useMemo(() => {
@@ -139,7 +126,14 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     setPage(1);
-  }, [dateFrom, dateTo, filters, pageSize, searchTerm, sortBy, view]);
+  }, [dateFrom, dateTo, filters, pageSize, sortBy, view]);
+
+  const handleLocationSelect = (location: LocationSearchResult | null) => {
+    setSelectedSearchLocation(location);
+    if (location) {
+      setView('map');
+    }
+  };
 
   const exportFilteredReports = () => {
     if (!canExportReports) return;
@@ -196,6 +190,8 @@ const Dashboard: React.FC = () => {
           onSortChange={setSortBy}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
+          selectedLocation={selectedSearchLocation}
+          onLocationSelect={handleLocationSelect}
           dateFrom={dateFrom}
           onDateFromChange={setDateFrom}
           dateTo={dateTo}
@@ -231,11 +227,11 @@ const Dashboard: React.FC = () => {
                     </TabsTrigger>
                   )}
                   <TabsTrigger value="map" className="gap-2">
-                    <Map className="w-4 h-4 text-status-in-progress" />
+                    <Map className="w-4 h-4 text-primary" />
                     <span className="hidden sm:inline">Map View</span>
                   </TabsTrigger>
                   <TabsTrigger value="list" className="gap-2">
-                    <List className="w-4 h-4 text-status-completed" />
+                    <List className="w-4 h-4 text-primary" />
                     <span className="hidden sm:inline">List View</span>
                   </TabsTrigger>
                 </TabsList>
@@ -263,7 +259,7 @@ const Dashboard: React.FC = () => {
             ) : activeView === 'overview' ? (
               <ManagerReportDashboard damages={filteredDamages} />
             ) : activeView === 'map' ? (
-              <MapView damages={filteredDamages} />
+              <MapView damages={filteredDamages} focusedLocation={selectedSearchLocation} />
             ) : (
               <div className="space-y-3">
                 <DamageList damages={pagedDamages} />

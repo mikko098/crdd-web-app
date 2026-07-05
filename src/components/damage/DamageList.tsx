@@ -9,10 +9,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
 import StatusBadge from './StatusBadge';
 import SeverityIndicator from './SeverityIndicator';
-import { Eye, MapPin } from 'lucide-react';
+import DamageImageWithDetections from './DamageImageWithDetections';
+import { MapPin } from 'lucide-react';
 
 interface DamageListProps {
   damages: RoadDamage[];
@@ -35,6 +35,7 @@ const DamageList: React.FC<DamageListProps> = ({ damages }) => {
     "longitudinal-crack": 'Longitudinal Crack',
     "alligator": 'Alligator Crack',
     other: 'Other',
+    'no-damage': 'No Damage',
   };
 
   if (damages.length === 0) {
@@ -61,8 +62,6 @@ const DamageList: React.FC<DamageListProps> = ({ damages }) => {
             <TableHead>Traffic</TableHead>
             <TableHead>Date</TableHead>
             <TableHead>Contributor</TableHead>
-            <TableHead className="max-w-[200px]">Comment</TableHead>
-            <TableHead className="w-24">Action</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -74,11 +73,12 @@ const DamageList: React.FC<DamageListProps> = ({ damages }) => {
             >
               <TableCell className="font-medium">{damage.captureId ?? damage.id}</TableCell>
               <TableCell>
-                <div className="w-12 h-12 rounded-md overflow-hidden">
-                  <img 
-                    src={damage.imageUrl} 
+                <div className="h-12 w-12">
+                  <DamageImageWithDetections
+                    src={damage.imageUrl}
                     alt={`Damage ${damage.captureId ?? damage.id}`}
-                    className="w-full h-full object-cover"
+                    detections={damage.inferenceResults}
+                    className="h-full w-full rounded-md"
                   />
                 </div>
               </TableCell>
@@ -104,23 +104,6 @@ const DamageList: React.FC<DamageListProps> = ({ damages }) => {
               </TableCell>
               <TableCell>{formatDate(damage.dateReported)}</TableCell>
               <TableCell>{damage.contributor.name}</TableCell>
-              <TableCell className="max-w-[200px]">
-                <span className="text-muted-foreground text-sm line-clamp-2">
-                  {damage.comment || '-'}
-                </span>
-              </TableCell>
-              <TableCell>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/damage/${damage.id}`);
-                  }}
-                >
-                  <Eye className="w-4 h-4 text-primary" />
-                </Button>
-              </TableCell>
             </TableRow>
           ))}
         </TableBody>

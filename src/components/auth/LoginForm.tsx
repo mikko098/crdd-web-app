@@ -7,7 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { AlertCircle, Mail, Lock, User, MapPin, TrafficCone } from 'lucide-react';
+import { ROADVISION_LOGO_SRC } from '@/assets/brand';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { AlertCircle, Mail, Lock, User, TrafficCone } from 'lucide-react';
 
 const invalidCredentialCodes = new Set([
   'auth/invalid-credential',
@@ -97,9 +99,12 @@ const LoginForm: React.FC = () => {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-foreground p-4">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_24px_24px,hsl(0_0%_100%/0.08)_1px,transparent_1.5px)] bg-[length:48px_48px]" />
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(220_18%_8%)_0%,hsl(221_15%_16%)_48%,hsl(220_18%_8%)_100%)]" />
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-background p-4">
+      <div className="absolute right-4 top-4 z-20 rounded-lg border border-border/70 bg-card/90 shadow-sm backdrop-blur">
+        <ThemeToggle />
+      </div>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_24px_24px,hsl(var(--primary)/0.12)_1px,transparent_1.5px)] bg-[length:48px_48px]" />
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(var(--background))_0%,hsl(var(--secondary))_48%,hsl(var(--background))_100%)]" />
       <svg
         className="pointer-events-none absolute inset-0 h-full w-full opacity-95"
         preserveAspectRatio="none"
@@ -119,9 +124,11 @@ const LoginForm: React.FC = () => {
 
       <Card className="w-full max-w-md relative z-10 border-border/70 bg-card/95 shadow-card backdrop-blur">
         <CardHeader className="text-center pb-2">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-foreground shadow-lg ring-1 ring-primary/40">
-            <MapPin className="w-8 h-8 text-primary" />
-          </div>
+          <img
+            src={ROADVISION_LOGO_SRC}
+            alt="RoadVision AI temporary logo"
+            className="mx-auto mb-4 h-20 w-20 object-contain dark:brightness-0 dark:invert"
+          />
           <CardTitle className="text-2xl font-bold">RoadVision AI</CardTitle>
           <CardDescription className="flex items-center justify-center gap-2 text-muted-foreground">
             <TrafficCone className="h-4 w-4 text-primary" />

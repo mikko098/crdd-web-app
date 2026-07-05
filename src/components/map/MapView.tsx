@@ -1,15 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { RoadDamage } from '@/types';
 import DamageCard from '@/components/damage/DamageCard';
 import { useTheme } from '@/components/theme/ThemeProvider';
-import { getNominatimLocationName } from '@/services/geocoding';
-import { MapPin } from 'lucide-react';
+import { resolveAndStoreCaptureAddress } from '@/services/captures';
+import { Crosshair, MapPin } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
 interface MapViewProps {
   damages: RoadDamage[];
+  focusedLocation?: {
+    lat: number;
+    lng: number;
+    label: string;
+  } | null;
 }
 
 const osmTileLayer = {
@@ -18,7 +23,12 @@ const osmTileLayer = {
 };
 
 // Custom marker icons based on status
+const markerIconCache = new Map<string, L.DivIcon>();
+
 const createMarkerIcon = (status: string) => {
+  const cached = markerIconCache.get(status);
+  if (cached) return cached;
+
   const colors: Record<string, string> = {
     urgent: '#ef4444',
     pending: '#f59e0b',
@@ -28,7 +38,7 @@ const createMarkerIcon = (status: string) => {
   
   const color = colors[status] || '#3b82f6';
   
-  return L.divIcon({
+  const icon = L.divIcon({
     className: 'custom-marker',
     html: `
       <div style="
@@ -55,47 +65,97 @@ const createMarkerIcon = (status: string) => {
     iconAnchor: [16, 32],
     popupAnchor: [0, -32],
   });
+
+  markerIconCache.set(status, icon);
+  return icon;
 };
 
 // Component to recenter map when damages change
-const MapController: React.FC<{ damages: RoadDamage[] }> = ({ damages }) => {
+function fitMapToDamages(map: L.Map, damages: RoadDamage[]) {
+  if (damages.length === 0) return;
+
+  const bounds = L.latLngBounds(
+    damages.map(d => [d.location.lat, d.location.lng])
+  );
+  map.fitBounds(bounds, { padding: [50, 50] });
+}
+
+const MapController: React.FC<{
+  damages: RoadDamage[];
+  focusedLocation?: MapViewProps['focusedLocation'];
+  recenterRequestId: number;
+}> = ({ damages, focusedLocation, recenterRequestId }) => {
   const map = useMap();
+  const fittedMarkerSignatureRef = useRef<string | null>(null);
+  const focusedLocationSignatureRef = useRef<string | null>(null);
+  const recenterRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (!focusedLocation) return;
+
+    const signature = `${focusedLocation.lat.toFixed(6)},${focusedLocation.lng.toFixed(6)}`;
+    if (focusedLocationSignatureRef.current === signature) return;
+
+    focusedLocationSignatureRef.current = signature;
+    map.flyTo([focusedLocation.lat, focusedLocation.lng], 15, { duration: 0.8 });
+  }, [focusedLocation, map]);
+
+  useEffect(() => {
+    if (recenterRequestId === recenterRequestRef.current) return;
+
+    recenterRequestRef.current = recenterRequestId;
+    focusedLocationSignatureRef.current = null;
+    fitMapToDamages(map, damages);
+  }, [damages, map, recenterRequestId]);
   
   useEffect(() => {
-    if (damages.length > 0) {
-      const bounds = L.latLngBounds(
-        damages.map(d => [d.location.lat, d.location.lng])
-      );
-      map.fitBounds(bounds, { padding: [50, 50] });
+    if (damages.length === 0) return;
+    if (focusedLocation) return;
+
+    const markerSignature = damages
+      .map((damage) => `${damage.id}:${damage.location.lat},${damage.location.lng}`)
+      .sort()
+      .join('|');
+
+    if (fittedMarkerSignatureRef.current === markerSignature) {
+      return;
     }
-  }, [damages, map]);
+
+    fittedMarkerSignatureRef.current = markerSignature;
+
+    fitMapToDamages(map, damages);
+  }, [damages, focusedLocation, map]);
   
   return null;
 };
 
-const MapView: React.FC<MapViewProps> = ({ damages }) => {
+const MapView: React.FC<MapViewProps> = ({ damages, focusedLocation }) => {
   const { resolvedTheme } = useTheme();
   const [selectedDamage, setSelectedDamage] = useState<RoadDamage | null>(null);
   const [locationNames, setLocationNames] = useState<Record<string, string>>({});
+  const [recenterRequestId, setRecenterRequestId] = useState(0);
 
   // Default center (New York City area)
   const defaultCenter: [number, number] = [40.7128, -74.006];
   const defaultZoom = 12;
+  const isCoordinateLabel = (value: string) => /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(value.trim());
 
   const handleMarkerClick = (damage: RoadDamage) => {
     setSelectedDamage(damage);
 
-    if (locationNames[damage.id]) return;
+    if (locationNames[damage.id] || !isCoordinateLabel(damage.location.address)) return;
 
-    getNominatimLocationName(damage.location.lat, damage.location.lng).then((locationName) => {
+    resolveAndStoreCaptureAddress(damage.id, damage.location.lat, damage.location.lng).then((locationName) => {
       setLocationNames((current) => ({
         ...current,
         [damage.id]: locationName,
       }));
+    }).catch((error) => {
+      console.warn(`Failed to resolve location for ${damage.id}.`, error);
     });
   };
 
-  if (damages.length === 0) {
+  if (damages.length === 0 && !focusedLocation) {
     return (
       <div className="road-map-shell relative flex h-full min-h-[500px] w-full items-center justify-center overflow-hidden bg-muted/30">
         <div className="text-center text-muted-foreground dark:text-[hsl(42_18%_86%)]">
@@ -177,7 +237,11 @@ const MapView: React.FC<MapViewProps> = ({ damages }) => {
           url={osmTileLayer.url}
         />
         
-        <MapController damages={damages} />
+        <MapController
+          damages={damages}
+          focusedLocation={focusedLocation}
+          recenterRequestId={recenterRequestId}
+        />
         
         {damages.map((damage) => (
           <Marker
@@ -192,6 +256,7 @@ const MapView: React.FC<MapViewProps> = ({ damages }) => {
               <DamageCard
                 damage={damage}
                 compact
+                showImage={false}
                 locationLabel={
                   locationNames[damage.id] ??
                   (selectedDamage?.id === damage.id ? 'Resolving location...' : damage.location.address)
@@ -228,8 +293,21 @@ const MapView: React.FC<MapViewProps> = ({ damages }) => {
       {/* Info panel */}
       <div className="map-floating-panel absolute top-4 right-4 bg-card/95 backdrop-blur-sm rounded-lg p-3 shadow-lg z-[99]">
         <p className="text-sm font-medium">{damages.length} Reports</p>
-        <p className="text-xs text-muted-foreground">Click a marker for details</p>
+        <p className="text-xs text-muted-foreground">
+          {focusedLocation ? `Viewing ${focusedLocation.label}` : 'Click a marker for details'}
+        </p>
       </div>
+
+      <button
+        type="button"
+        className="map-floating-panel absolute bottom-4 right-4 z-[1000] inline-flex h-10 w-10 items-center justify-center rounded-lg border bg-card/95 text-primary shadow-lg backdrop-blur-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+        onClick={() => setRecenterRequestId((current) => current + 1)}
+        disabled={damages.length === 0}
+        title="Recenter to reports"
+        aria-label="Recenter map to reports"
+      >
+        <Crosshair className="h-5 w-5" />
+      </button>
     </div>
   );
 };

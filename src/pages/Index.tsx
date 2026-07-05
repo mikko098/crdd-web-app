@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import { ROADVISION_LOGO_SRC } from '@/assets/brand';
 import {
   ArrowRight,
   BarChart3,
@@ -33,7 +34,7 @@ const activityItems = [
   {
     title: 'Longitudinal crack report updated',
     meta: 'Traffic impact added by reviewer',
-    tone: 'text-amber-700 bg-amber-50 border-amber-200',
+    tone: 'text-cyan-700 bg-cyan-50 border-cyan-200',
   },
   {
     title: 'Repair evidence submitted',
@@ -56,22 +57,24 @@ const Index = () => {
             alt="Detected road surface damage"
             className="absolute inset-0 h-full w-full object-cover"
           />
-          <div className="absolute inset-0 bg-slate-950/75" />
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,23,42,0.96)_0%,rgba(15,23,42,0.82)_50%,rgba(15,23,42,0.38)_100%)]" />
+          <div className="absolute inset-0 bg-teal-950/78" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(4,47,46,0.96)_0%,rgba(17,94,89,0.82)_50%,rgba(15,118,110,0.34)_100%)]" />
 
-          <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[0.95fr_1.05fr] lg:px-8">
-            <div className="max-w-3xl py-12 text-white">
-              <Link to="/" className="mb-10 inline-flex items-center gap-3 text-white">
-                <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-amber-400 text-slate-950 shadow-lg shadow-amber-950/20">
-                  <MapPinned className="h-6 w-6" />
-                </span>
+          <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[0.95fr_1.05fr] lg:px-8">
+            <div className="max-w-3xl py-8 text-white lg:py-10">
+              <Link to="/" className="mb-8 inline-flex items-center gap-3 text-white">
+                <img
+                  src={ROADVISION_LOGO_SRC}
+                  alt="RoadVision AI temporary logo"
+                  className="h-14 w-14 object-contain dark:brightness-0 dark:invert"
+                />
                 <span>
                   <span className="block text-base font-semibold leading-none">RoadVision AI</span>
                   <span className="block text-sm text-white/70">Road maintenance dashboard</span>
                 </span>
               </Link>
 
-              <div className="mb-5 inline-flex items-center gap-2 rounded-md border border-amber-300/40 bg-amber-300/12 px-3 py-2 text-sm font-medium text-amber-100">
+              <div className="mb-5 inline-flex items-center gap-2 rounded-md border border-teal-200/45 bg-teal-300/12 px-3 py-2 text-sm font-medium text-teal-50">
                 <TrafficCone className="h-4 w-4" />
                 Map reports. Prioritize repairs. Close the loop.
               </div>
@@ -83,7 +86,7 @@ const Index = () => {
                 into one focused workspace for maintenance teams.
               </p>
               <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
-                <Button asChild size="lg" className="bg-amber-400 text-slate-950 hover:bg-amber-300" disabled={isLoading}>
+                <Button asChild size="lg" className="bg-teal-300 text-teal-950 hover:bg-teal-200" disabled={isLoading}>
                   <Link to={destination}>
                     {ctaLabel}
                     <ArrowRight className="h-4 w-4" />
@@ -108,19 +111,19 @@ const Index = () => {
             </div>
 
             <div className="flex items-center justify-end">
-              <div className="w-full max-w-xl rounded-lg border border-white/15 bg-white p-4 shadow-2xl shadow-slate-950/35">
-                <div className="rounded-md border bg-slate-50 p-4">
+              <div className="w-full max-w-xl rounded-lg border border-white/15 bg-white p-4 shadow-2xl shadow-teal-950/35">
+                <div className="rounded-md border bg-teal-50/70 p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-sm font-semibold text-slate-950">Maintenance report queue</p>
-                      <p className="mt-1 text-xs text-slate-500">Today&apos;s mapped road damage cases</p>
+                      <p className="text-sm font-semibold text-teal-950">Maintenance report queue</p>
+                      <p className="mt-1 text-xs text-teal-700/70">Today&apos;s mapped road damage cases</p>
                     </div>
                     <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
                       Live
                     </span>
                   </div>
 
-                  <div className="mt-4 flex min-h-11 items-center gap-3 rounded-md border bg-white px-3 text-sm text-slate-600">
+                  <div className="mt-4 flex min-h-11 items-center gap-3 rounded-md border bg-white px-3 text-sm text-teal-800/70">
                     <LocateFixed className="h-4 w-4 text-primary" />
                     Filter by district, road, or report ID
                   </div>
@@ -132,13 +135,13 @@ const Index = () => {
                         alt="Road damage preview in dashboard"
                         className="absolute inset-0 h-full w-full object-cover"
                       />
-                      <div className="absolute inset-0 bg-slate-950/25" />
-                      <div className="absolute bottom-4 left-4 right-4 rounded-md bg-white p-4 text-slate-950 shadow-lg">
+                      <div className="absolute inset-0 bg-teal-950/25" />
+                      <div className="absolute bottom-4 left-4 right-4 rounded-md bg-white p-4 text-teal-950 shadow-lg">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm font-semibold">Pothole detected</span>
                           <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700">Urgent</span>
                         </div>
-                        <p className="mt-2 text-xs text-slate-600">High traffic corridor - assign maintenance crew</p>
+                        <p className="mt-2 text-xs text-teal-800/70">High traffic corridor - assign maintenance crew</p>
                       </div>
                     </div>
                   </div>
@@ -150,8 +153,8 @@ const Index = () => {
                           <FileText className="h-4 w-4" />
                         </span>
                         <span>
-                          <span className="block text-sm font-medium text-slate-950">{item.title}</span>
-                          <span className="block text-xs text-slate-500">{item.meta}</span>
+                          <span className="block text-sm font-medium text-teal-950">{item.title}</span>
+                          <span className="block text-xs text-teal-800/65">{item.meta}</span>
                         </span>
                       </div>
                     ))}

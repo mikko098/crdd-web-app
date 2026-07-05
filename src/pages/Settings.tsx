@@ -8,13 +8,22 @@ import { ThemePreference, UserSettings } from '@/types';
 import Header from '@/components/layout/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Bell, Info, Moon, Globe, Shield } from 'lucide-react';
+import { ArrowLeft, Bell, Moon, Globe, Shield, Trash2 } from 'lucide-react';
 
 const Settings: React.FC = () => {
   const {
@@ -22,6 +31,7 @@ const Settings: React.FC = () => {
     isLoading,
     user,
     resetPassword,
+    deleteAccount,
   } = useAuth();
   const { setTheme } = useTheme();
   const { toast } = useToast();
@@ -30,6 +40,9 @@ const Settings: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>(defaultUserSettings);
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -115,6 +128,34 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      toast({
+        title: 'Password required',
+        description: 'Enter your password to confirm account deletion.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsDeletingAccount(true);
+      await deleteAccount(deletePassword);
+      setIsDeleteDialogOpen(false);
+      setDeletePassword('');
+      toast({ title: 'Account deleted' });
+      navigate('/login', { replace: true });
+    } catch (err) {
+      toast({
+        title: 'Failed to delete account',
+        description: err instanceof Error ? err.message : 'Please check your password and try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-secondary/30 flex flex-col">
       <Header onToggleSidebar={() => {}} />
@@ -141,13 +182,6 @@ const Settings: React.FC = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertTitle>Delivery backend not connected</AlertTitle>
-                <AlertDescription>
-                  This preference is saved to Firestore. Automatic email alerts still need a backend worker before messages are sent.
-                </AlertDescription>
-              </Alert>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>Email alert preference</Label>
@@ -252,11 +286,37 @@ const Settings: React.FC = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <Button variant="ghost" className="w-full" onClick={handleSendResetEmail}>
+              <div className="rounded-lg border bg-background/70 p-3 shadow-sm">
+                <Button
+                  variant="ghost"
+                  className="w-full border border-border bg-card hover:bg-accent"
+                  onClick={handleSendResetEmail}
+                >
                   Email Password Reset Link
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-destructive/40">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-destructive dark:text-red-300">
+                <Trash2 className="w-5 h-5 text-destructive dark:text-red-300" />
+                Delete Account
+              </CardTitle>
+              <CardDescription>
+                Permanently remove your dashboard account and saved settings.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                type="button"
+                variant="destructive"
+                className="w-full bg-red-600 text-white hover:bg-red-500 dark:bg-red-500 dark:text-white dark:hover:bg-red-400"
+                onClick={() => setIsDeleteDialogOpen(true)}
+              >
+                Delete My Account
+              </Button>
             </CardContent>
           </Card>
 
@@ -267,6 +327,46 @@ const Settings: React.FC = () => {
           </div>
         </div>
       </main>
+
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={(open) => {
+          setIsDeleteDialogOpen(open);
+          if (!open) setDeletePassword('');
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes your login account and saved dashboard settings. Existing submitted reports may remain for maintenance records.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="delete-password">Confirm password</Label>
+            <Input
+              id="delete-password"
+              type="password"
+              value={deletePassword}
+              onChange={(event) => setDeletePassword(event.target.value)}
+              placeholder="Enter your password"
+              autoComplete="current-password"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingAccount}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              className="bg-red-600 text-white hover:bg-red-500 dark:bg-red-500 dark:text-white dark:hover:bg-red-400"
+              onClick={handleDeleteAccount}
+              disabled={isDeletingAccount}
+            >
+              {isDeletingAccount ? 'Deleting...' : 'Delete Account'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

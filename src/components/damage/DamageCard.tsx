@@ -5,15 +5,17 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import StatusBadge from './StatusBadge';
 import SeverityIndicator from './SeverityIndicator';
+import DamageImageWithDetections from './DamageImageWithDetections';
 import { MapPin, Calendar, User, MessageSquare, Eye } from 'lucide-react';
 
 interface DamageCardProps {
   damage: RoadDamage;
   compact?: boolean;
   locationLabel?: string;
+  showImage?: boolean;
 }
 
-const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false, locationLabel }) => {
+const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false, locationLabel, showImage = true }) => {
   const navigate = useNavigate();
   const displayLocation = locationLabel ?? damage.location.address;
 
@@ -31,6 +33,7 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false, locati
     "longitudinal-crack": 'Longitudinal Crack',
     "alligator": 'Alligator Crack',
     other: 'Other',
+    'no-damage': 'No Damage',
   };
 
   if (compact) {
@@ -38,13 +41,17 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false, locati
       <Card className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group animate-fade-in">
         <CardContent className="p-0">
           <div className="flex gap-4 p-4">
-            <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0">
-              <img 
-                src={damage.imageUrl} 
-                alt={`Damage ${damage.captureId ?? damage.id}`}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
-            </div>
+            {showImage && (
+              <div className="relative w-20 h-20 shrink-0">
+                <DamageImageWithDetections
+                  src={damage.imageUrl}
+                  alt={`Damage ${damage.captureId ?? damage.id}`}
+                  detections={damage.inferenceResults}
+                  className="h-full w-full rounded-lg"
+                  imageClassName="group-hover:scale-105 transition-transform duration-300"
+                />
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2 mb-1">
                 <span className="font-semibold text-sm">{damage.captureId ?? damage.id}</span>
@@ -76,10 +83,11 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false, locati
     <Card className="overflow-hidden hover:shadow-lg transition-shadow animate-fade-in">
       <CardContent className="p-0">
         <div className="relative h-40 overflow-hidden">
-          <img 
-            src={damage.imageUrl} 
+          <DamageImageWithDetections
+            src={damage.imageUrl}
             alt={`Damage ${damage.captureId ?? damage.id}`}
-            className="w-full h-full object-cover"
+            detections={damage.inferenceResults}
+            className="h-full w-full"
           />
           <div className="absolute top-3 left-3">
             <StatusBadge status={damage.status} />
@@ -110,21 +118,7 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false, locati
               <User className="w-4 h-4 text-status-completed" />
               <span>{damage.contributor.name}</span>
             </div>
-            {damage.comment && (
-              <div className="flex items-start gap-2 text-muted-foreground">
-                <MessageSquare className="w-4 h-4 shrink-0 mt-0.5 text-status-pending" />
-                <span className="line-clamp-2">{damage.comment}</span>
-              </div>
-            )}
           </div>
-
-          <Button 
-            className="w-full" 
-            onClick={() => navigate(`/damage/${damage.id}`)}
-          >
-            <Eye className="w-4 h-4 mr-2 text-primary-foreground" />
-            View Details
-          </Button>
         </div>
       </CardContent>
     </Card>

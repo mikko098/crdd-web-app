@@ -14,8 +14,8 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { ROADVISION_LOGO_SRC } from '@/assets/brand';
 import { 
-  MapPin, 
   LogOut, 
   User, 
   Settings, 
@@ -52,9 +52,11 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           onClick={() => navigate('/dashboard')}
           className="flex items-center gap-3 rounded-lg text-left transition-opacity hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
         >
-          <div className="w-9 h-9 rounded-lg bg-foreground flex items-center justify-center ring-1 ring-primary/30">
-            <MapPin className="w-5 h-5 text-primary" />
-          </div>
+          <img
+            src={ROADVISION_LOGO_SRC}
+            alt="RoadVision AI temporary logo"
+            className="h-10 w-10 rounded-lg object-contain dark:brightness-0 dark:invert"
+          />
           <div className="hidden sm:block">
             <h1 className="font-semibold text-foreground">RoadVision AI</h1>
             <p className="text-xs text-muted-foreground">Damage Detection System</p>
@@ -92,18 +94,18 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               <span>Profile</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
-              <Settings className="mr-2 h-4 w-4 text-status-in-progress" />
+              <Settings className="mr-2 h-4 w-4 text-primary" />
               <span>Settings</span>
             </DropdownMenuItem>
             {canManageUsers && (
               <DropdownMenuItem onClick={() => navigate('/users')} className="cursor-pointer">
-                <Users className="mr-2 h-4 w-4 text-status-completed" />
+                <Users className="mr-2 h-4 w-4 text-primary" />
                 <span>User Access</span>
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive cursor-pointer">
-              <LogOut className="mr-2 h-4 w-4 text-destructive" />
+            <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive dark:text-red-300 dark:focus:text-red-200 cursor-pointer">
+              <LogOut className="mr-2 h-4 w-4 text-destructive dark:text-red-300" />
               <span>Log out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>

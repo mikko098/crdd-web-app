@@ -1,6 +1,7 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   EmailAuthProvider,
   onAuthStateChanged,
   reauthenticateWithCredential,
@@ -11,7 +12,7 @@ import {
   updateProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { User, UserRole } from '@/types';
 
@@ -26,6 +27,7 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   updateAccountProfile: (name: string) => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -175,6 +177,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await updatePassword(currentUser, newPassword);
   };
 
+  const deleteAccount = async (password: string): Promise<void> => {
+    const currentUser = auth.currentUser;
+    const email = currentUser?.email;
+
+    if (!currentUser || !email) {
+      throw new Error('Unable to delete account. Please sign in again.');
+    }
+
+    const credential = EmailAuthProvider.credential(email, password);
+    await reauthenticateWithCredential(currentUser, credential);
+
+    await Promise.all([
+      deleteDoc(doc(db, 'user_settings', currentUser.uid)),
+      deleteDoc(doc(db, 'users', currentUser.uid)),
+    ]);
+    await deleteUser(currentUser);
+    setUser(null);
+  };
+
   const logout = async () => {
     await signOut(auth);
     setUser(null);
@@ -189,6 +210,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         resetPassword,
         changePassword,
         updateAccountProfile,
+        deleteAccount,
         logout,
         isAuthenticated: !!user,
         isLoading,

@@ -155,21 +155,21 @@ const ManagerReportDashboard: React.FC<ManagerReportDashboardProps> = ({ damages
       value: analytics.solvedReports,
       detail: `${analytics.completionRate}% completion rate`,
       icon: CheckCircle2,
-      iconColor: 'text-status-completed',
+      iconColor: 'text-primary',
     },
     {
       title: 'Active Work',
       value: analytics.activeReports,
       detail: 'Pending or in progress',
       icon: Clock,
-      iconColor: 'text-status-in-progress',
+      iconColor: 'text-primary',
     },
     {
       title: 'Urgent Queue',
       value: analytics.urgentReports,
       detail: 'Urgent or critical reports',
       icon: FileWarning,
-      iconColor: 'text-status-urgent',
+      iconColor: 'text-primary',
     },
   ];
 

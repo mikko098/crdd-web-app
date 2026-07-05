@@ -1,11 +1,24 @@
 interface NominatimSearchResult {
   name?: string;
   display_name?: string;
+  lat?: string;
+  lon?: string;
+  type?: string;
+  class?: string;
 }
 
 export interface NominatimLocation {
   name: string;
   displayName: string;
+}
+
+export interface LocationSearchResult {
+  id: string;
+  label: string;
+  detail: string;
+  lat: number;
+  lng: number;
+  category?: string;
 }
 
 const memoryCache = new Map<string, Promise<NominatimLocation>>();
@@ -27,10 +40,9 @@ function buildFallbackLocation(lat: number, lon: number): NominatimLocation {
   };
 }
 
-function pickLocation(results: NominatimSearchResult[], lat: number, lon: number): NominatimLocation {
-  const first = results[0];
-  const name = first?.name?.trim();
-  const displayName = first?.display_name?.trim();
+function pickLocation(result: NominatimSearchResult | undefined, lat: number, lon: number): NominatimLocation {
+  const name = result?.name?.trim();
+  const displayName = result?.display_name?.trim();
   const fallback = buildFallbackLocation(lat, lon);
 
   return {
@@ -96,18 +108,57 @@ export async function getNominatimLocation(lat: number, lon: number): Promise<No
   return request;
 }
 
-async function fetchNominatimLocation(lat: number, lon: number): Promise<NominatimLocation> {
+export async function searchNominatimLocations(query: string): Promise<LocationSearchResult[]> {
+  const cleanQuery = query.trim();
+  if (cleanQuery.length < 3) return [];
+
   const params = new URLSearchParams({
-    q: `${lat}, ${lon}`,
+    q: cleanQuery,
     format: 'jsonv2',
-    limit: '1',
+    limit: '6',
+    addressdetails: '1',
   });
 
   const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
   if (!response.ok) {
-    throw new Error(`Nominatim request failed with ${response.status}`);
+    throw new Error(`Nominatim search failed with ${response.status}`);
   }
 
   const results = (await response.json()) as NominatimSearchResult[];
-  return pickLocation(results, lat, lon);
+
+  return results
+    .map((result, index) => {
+      const lat = Number(result.lat);
+      const lng = Number(result.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+      const displayName = result.display_name?.trim() || fallbackCoordinateLabel(lat, lng);
+      const label = result.name?.trim() || displayName.split(',')[0]?.trim() || displayName;
+
+      return {
+        id: `${lat.toFixed(6)},${lng.toFixed(6)}-${index}`,
+        label,
+        detail: displayName,
+        lat,
+        lng,
+        category: result.type || result.class,
+      } satisfies LocationSearchResult;
+    })
+    .filter((result): result is LocationSearchResult => result !== null);
+}
+
+async function fetchNominatimLocation(lat: number, lon: number): Promise<NominatimLocation> {
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lon),
+    format: 'jsonv2',
+  });
+
+  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Nominatim request failed with ${response.status}`);
+  }
+
+  const result = (await response.json()) as NominatimSearchResult;
+  return pickLocation(result, lat, lon);
 }

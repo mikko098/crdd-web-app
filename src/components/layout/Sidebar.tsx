@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { DamageType, DamageStatus, DamageSeverity } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -19,15 +19,18 @@ import {
   Filter, 
   SortAsc,
   RotateCcw,
-  Search
+  Loader2,
+  MapPin,
+  Search,
+  X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { LocationSearchResult, searchNominatimLocations } from '@/services/geocoding';
 
 interface Filters {
   types: DamageType[];
   statuses: DamageStatus[];
   severities: DamageSeverity[];
-  showNoDetections: boolean;
 }
 
 interface SidebarProps {
@@ -39,6 +42,8 @@ interface SidebarProps {
   onSortChange: (sort: string) => void;
   searchTerm: string;
   onSearchChange: (search: string) => void;
+  selectedLocation: LocationSearchResult | null;
+  onLocationSelect: (location: LocationSearchResult | null) => void;
   dateFrom: string;
   onDateFromChange: (date: string) => void;
   dateTo: string;
@@ -52,6 +57,7 @@ const damageTypes: { value: DamageType; label: string }[] = [
   { value: 'alligator', label: 'Alligator Crack' },
   { value: 'longitudinal-crack', label: 'Longitudinal Crack' },
   { value: 'other', label: 'Other' },
+  { value: 'no-damage', label: 'No Damage' },
 ];
 
 const statuses: { value: DamageStatus; label: string; color: string }[] = [
@@ -84,12 +90,70 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSortChange,
   searchTerm,
   onSearchChange,
+  selectedLocation,
+  onLocationSelect,
   dateFrom,
   onDateFromChange,
   dateTo,
   onDateToChange,
   view,
 }) => {
+  const [locationResults, setLocationResults] = useState<LocationSearchResult[]>([]);
+  const [isSearchingLocations, setIsSearchingLocations] = useState(false);
+  const [locationSearchError, setLocationSearchError] = useState('');
+  const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
+  const locationSearchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const cleanSearch = searchTerm.trim();
+    let isCurrent = true;
+
+    if (cleanSearch.length < 3) {
+      setLocationResults([]);
+      setLocationSearchError('');
+      setIsSearchingLocations(false);
+      return undefined;
+    }
+
+    setIsSearchingLocations(true);
+    setLocationSearchError('');
+
+    const timer = window.setTimeout(() => {
+      searchNominatimLocations(cleanSearch)
+        .then((results) => {
+          if (!isCurrent) return;
+          setLocationResults(results);
+          setIsLocationDropdownOpen(true);
+        })
+        .catch((error) => {
+          if (!isCurrent) return;
+          console.warn('Location search failed.', error);
+          setLocationResults([]);
+          setLocationSearchError('Unable to search locations.');
+          setIsLocationDropdownOpen(true);
+        })
+        .finally(() => {
+          if (isCurrent) setIsSearchingLocations(false);
+        });
+    }, 350);
+
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timer);
+    };
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!locationSearchRef.current?.contains(event.target as Node)) {
+        setIsLocationDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, []);
+
   const toggleType = (type: DamageType) => {
     const newTypes = filters.types.includes(type)
       ? filters.types.filter(t => t !== type)
@@ -112,11 +176,28 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const resetFilters = () => {
-    onFiltersChange({ types: [], statuses: [], severities: [], showNoDetections: false });
+    onFiltersChange({ types: [], statuses: [], severities: [] });
     onSortChange('date-desc');
     onSearchChange('');
+    onLocationSelect(null);
+    setLocationResults([]);
+    setLocationSearchError('');
     onDateFromChange('');
     onDateToChange('');
+  };
+
+  const selectLocation = (location: LocationSearchResult) => {
+    onLocationSelect(location);
+    onSearchChange(location.label);
+    setIsLocationDropdownOpen(false);
+  };
+
+  const clearLocationSearch = () => {
+    onSearchChange('');
+    onLocationSelect(null);
+    setLocationResults([]);
+    setLocationSearchError('');
+    setIsLocationDropdownOpen(false);
   };
 
   return (
@@ -162,17 +243,66 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="report-search" className="text-sm font-medium">Search Reports</Label>
-                <div className="relative">
+                <Label htmlFor="location-search" className="text-sm font-medium">Search Locations</Label>
+                <div ref={locationSearchRef} className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-primary drop-shadow-sm" />
                   <Input
-                    id="report-search"
+                    id="location-search"
                     value={searchTerm}
-                    onChange={(event) => onSearchChange(event.target.value)}
-                    placeholder="Location, report, team"
-                    className="pl-9"
+                    onChange={(event) => {
+                      onSearchChange(event.target.value);
+                      onLocationSelect(null);
+                      setIsLocationDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsLocationDropdownOpen(true)}
+                    placeholder="Search city, road, district"
+                    className="pl-9 pr-9"
                   />
+                  {isSearchingLocations ? (
+                    <Loader2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-sidebar-primary" />
+                  ) : searchTerm ? (
+                    <button
+                      type="button"
+                      aria-label="Clear location search"
+                      className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      onClick={clearLocationSearch}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  ) : null}
+
+                  {isLocationDropdownOpen && searchTerm.trim().length >= 3 && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-[80] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-lg">
+                      {locationResults.length > 0 ? (
+                        <div className="max-h-72 overflow-y-auto py-1">
+                          {locationResults.map((location) => (
+                            <button
+                              key={location.id}
+                              type="button"
+                              className="flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-sidebar-accent focus:bg-sidebar-accent focus:outline-none"
+                              onClick={() => selectLocation(location)}
+                            >
+                              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sidebar-primary" />
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-medium">{location.label}</span>
+                                <span className="line-clamp-2 text-xs text-muted-foreground">{location.detail}</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">
+                          {isSearchingLocations ? 'Searching locations...' : locationSearchError || 'No locations found.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
+                {selectedLocation ? (
+                  <p className="text-xs text-muted-foreground">
+                    Map target: {selectedLocation.label}
+                  </p>
+                ) : null}
               </div>
 
               <Separator />
@@ -201,30 +331,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-primary drop-shadow-sm" />
                   </div>
                 </div>
-              </div>
-
-              <Separator />
-
-              {/* No-detection captures */}
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="show-no-detections"
-                    checked={filters.showNoDetections}
-                    onCheckedChange={(checked) =>
-                      onFiltersChange({ ...filters, showNoDetections: Boolean(checked) })
-                    }
-                  />
-                  <label
-                    htmlFor="show-no-detections"
-                    className="text-sm font-medium leading-none cursor-pointer"
-                  >
-                    Show captures with no detections
-                  </label>
-                </div>
-                <p className="text-xs text-sidebar-foreground/65">
-                  Hidden by default so the map only shows confirmed damage reports.
-                </p>
               </div>
 
               <Separator />

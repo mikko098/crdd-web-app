@@ -27,6 +27,10 @@ const trafficMocks = vi.hoisted(() => ({
   trafficStatusFromCongestion: vi.fn(),
 }));
 
+const geocodingMocks = vi.hoisted(() => ({
+  getNominatimLocationDisplayName: vi.fn(),
+}));
+
 vi.mock('firebase/firestore', () => firestoreMocks);
 vi.mock('firebase/storage', () => storageMocks);
 vi.mock('@/lib/firebase', () => ({
@@ -34,11 +38,13 @@ vi.mock('@/lib/firebase', () => ({
   storage: { name: 'mock-storage' },
 }));
 vi.mock('@/services/traffic', () => trafficMocks);
+vi.mock('@/services/geocoding', () => geocodingMocks);
 
 import {
   addCaptureComment,
   assignCaptureTeam,
   getCaptureById,
+  getCaptures,
   updateCaptureStatus,
   uploadCaptureAfterRepairPhoto,
 } from '@/services/captures';
@@ -61,6 +67,7 @@ describe('captures service', () => {
       path: `${collectionName}/${id}`,
     }));
     firestoreMocks.serverTimestamp.mockReturnValue('server-now');
+    firestoreMocks.updateDoc.mockResolvedValue(undefined);
     storageMocks.ref.mockImplementation((storage, path) => ({ storage, path }));
     storageMocks.getDownloadURL.mockImplementation(async (storageRef) => `download://${storageRef.path}`);
     trafficMocks.congestionFromStoredLevel.mockReturnValue({
@@ -71,6 +78,7 @@ describe('captures service', () => {
       source: 'firebase',
     });
     trafficMocks.trafficStatusFromCongestion.mockReturnValue('medium');
+    geocodingMocks.getNominatimLocationDisplayName.mockResolvedValue('Jalan Bestari, Cyberjaya');
   });
 
   it('uses repair_status instead of inference status when mapping dashboard status', async () => {
@@ -106,6 +114,7 @@ describe('captures service', () => {
     expect(capture?.type).toBe('pothole');
     expect(capture?.severity).toBe('critical');
     expect(capture?.imageUrl).toBe('download://road-captures/capture-1.jpg');
+    expect(capture?.location.address).toBe('Jalan Bestari, Cyberjaya');
   });
 
   it('keeps the Firestore document id for routes when capture_id differs', async () => {
@@ -133,6 +142,180 @@ describe('captures service', () => {
 
     expect(capture?.id).toBe('firestore-doc-1');
     expect(capture?.captureId).toBe('mobile-capture-1');
+  });
+
+  it('maps empty inference results to the no-damage type', async () => {
+    firestoreMocks.getDoc.mockResolvedValue({
+      exists: () => true,
+      id: 'capture-no-damage',
+      data: () => ({
+        capture_id: 'capture-no-damage',
+        file_url: 'road-captures/capture-no-damage.jpg',
+        lat: 3.139,
+        long: 101.6869,
+        captured_at: 1710000000000,
+        has_inferenced: true,
+        traffic_level: 1,
+        inference_results: [],
+      }),
+    });
+
+    const capture = await getCaptureById('capture-no-damage');
+
+    expect(capture?.type).toBe('no-damage');
+    expect(capture?.description).toBe('Model inference completed with no road damage detections.');
+  });
+
+  it('uses the contributor display_name from the users collection', async () => {
+    firestoreMocks.getDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        id: 'capture-username',
+        data: () => ({
+          capture_id: 'capture-username',
+          user_id: 'user-with-name',
+          file_url: 'road-captures/capture-username.jpg',
+          lat: 3.139,
+          long: 101.6869,
+          captured_at: 1710000000000,
+          has_inferenced: true,
+          traffic_level: 1,
+          inference_results: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        id: 'user-with-name',
+        data: () => ({
+          display_name: 'Road Reporter',
+        }),
+      });
+
+    const capture = await getCaptureById('capture-username');
+
+    expect(capture?.contributor).toEqual({
+      id: 'user-with-name',
+      name: 'Road Reporter',
+    });
+  });
+
+  it('stores a resolved location_address on the capture document', async () => {
+    geocodingMocks.getNominatimLocationDisplayName.mockResolvedValue('Persiaran Bestari, Cyberjaya');
+    firestoreMocks.getDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        id: 'capture-location-write',
+        data: () => ({
+          capture_id: 'capture-location-write',
+          user_id: 'user-location',
+          file_url: 'road-captures/capture-location-write.jpg',
+          lat: 2.924214,
+          long: 101.636707,
+          captured_at: 1710000000000,
+          has_inferenced: true,
+          traffic_level: 1,
+          inference_results: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => false,
+        data: () => undefined,
+      });
+
+    const capture = await getCaptureById('capture-location-write');
+
+    expect(capture?.location.address).toBe('Persiaran Bestari, Cyberjaya');
+    expect(firestoreMocks.updateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'captures/capture-location-write' }),
+      { location_address: 'Persiaran Bestari, Cyberjaya' },
+    );
+  });
+
+  it('uses stored location_address without resolving it again', async () => {
+    firestoreMocks.getDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        id: 'capture-location-cached',
+        data: () => ({
+          capture_id: 'capture-location-cached',
+          user_id: 'user-location-cached',
+          file_url: 'road-captures/capture-location-cached.jpg',
+          lat: 2.924214,
+          long: 101.636707,
+          location_address: 'Stored Road Name, Cyberjaya',
+          captured_at: 1710000000000,
+          has_inferenced: true,
+          traffic_level: 1,
+          inference_results: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => false,
+        data: () => undefined,
+      });
+
+    const capture = await getCaptureById('capture-location-cached');
+
+    expect(capture?.location.address).toBe('Stored Road Name, Cyberjaya');
+    expect(geocodingMocks.getNominatimLocationDisplayName).not.toHaveBeenCalled();
+    expect(firestoreMocks.updateDoc).not.toHaveBeenCalled();
+  });
+
+  it('does not store coordinate fallback addresses after failed resolution', async () => {
+    geocodingMocks.getNominatimLocationDisplayName.mockResolvedValue('2.924214, 101.636707');
+    firestoreMocks.getDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        id: 'capture-location-failed',
+        data: () => ({
+          capture_id: 'capture-location-failed',
+          user_id: 'user-location-failed',
+          file_url: 'road-captures/capture-location-failed.jpg',
+          lat: 2.924214,
+          long: 101.636707,
+          captured_at: 1710000000000,
+          has_inferenced: true,
+          traffic_level: 1,
+          inference_results: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => false,
+        data: () => undefined,
+      });
+
+    const capture = await getCaptureById('capture-location-failed');
+
+    expect(capture?.location.address).toBe('2.924214, 101.636707');
+    expect(firestoreMocks.updateDoc).not.toHaveBeenCalled();
+  });
+
+  it('keeps all-captures loading light by not resolving images or missing addresses in bulk', async () => {
+    firestoreMocks.getDocs.mockResolvedValue({
+      docs: [
+        {
+          id: 'capture-summary',
+          data: () => ({
+            capture_id: 'capture-summary',
+            file_url: 'road-captures/capture-summary.jpg',
+            lat: 2.924214,
+            long: 101.636707,
+            captured_at: 1710000000000,
+            has_inferenced: true,
+            traffic_level: 1,
+            inference_results: [],
+          }),
+        },
+      ],
+    });
+
+    const captures = await getCaptures();
+
+    expect(captures[0].imageUrl).toBe('road-captures/capture-summary.jpg');
+    expect(captures[0].location.address).toBe('2.924214, 101.636707');
+    expect(storageMocks.getDownloadURL).not.toHaveBeenCalled();
+    expect(geocodingMocks.getNominatimLocationDisplayName).not.toHaveBeenCalled();
+    expect(firestoreMocks.updateDoc).not.toHaveBeenCalled();
   });
 
   it('writes repair_status when updating the maintenance lifecycle', async () => {

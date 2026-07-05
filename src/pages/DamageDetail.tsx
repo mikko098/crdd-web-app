@@ -24,11 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import StatusBadge from '@/components/damage/StatusBadge';
@@ -48,6 +43,7 @@ import {
   AlertTriangle,
   Cpu,
   Maximize2,
+  X,
 } from 'lucide-react';
 
 const DamageDetail: React.FC = () => {
@@ -151,6 +147,7 @@ const DamageDetail: React.FC = () => {
     'longitudinal-crack': 'Longitudinal Crack',
     alligator: 'Alligator Crack',
     other: 'Other',
+    'no-damage': 'No Damage',
   };
 
   const trafficLabels: Record<string, { label: string; color: string }> = {
@@ -440,83 +437,81 @@ const DamageDetail: React.FC = () => {
                         </span>
                       </button>
                     </div>
-                  ) : canUploadAfterPhoto ? (
+                  ) : (
                     <div>
                       <p className="text-sm font-medium mb-2">After Repair</p>
-                      <div className="aspect-video rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center">
+                      <div className="flex aspect-video items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/40">
                         <div className="text-center p-4">
                           <Camera className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                          <p className="text-sm text-muted-foreground">Upload after repair photo</p>
-                          <input
-                            ref={afterRepairInputRef}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={handleAfterRepairUpload}
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-2"
-                            onClick={() => afterRepairInputRef.current?.click()}
-                            disabled={savingAction === 'after-repair-photo'}
-                          >
-                            {savingAction === 'after-repair-photo' ? 'Uploading...' : 'Upload Photo'}
-                          </Button>
+                          <p className="text-sm font-medium text-muted-foreground">No fixed image uploaded</p>
+                          <p className="mt-1 text-xs text-muted-foreground">After-repair evidence will appear here.</p>
+                          {canUploadAfterPhoto && (
+                            <>
+                              <input
+                                ref={afterRepairInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleAfterRepairUpload}
+                              />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="mt-3"
+                                onClick={() => afterRepairInputRef.current?.click()}
+                                disabled={savingAction === 'after-repair-photo'}
+                              >
+                                {savingAction === 'after-repair-photo' ? 'Uploading...' : 'Upload Photo'}
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
-                  ) : null}
+                  )}
                 </div>
               </CardContent>
             </Card>
 
-            <Dialog open={expandedImage !== null} onOpenChange={(open) => !open && setExpandedImage(null)}>
-              <DialogContent className="flex max-h-[92vh] max-w-5xl flex-col gap-3 overflow-hidden p-4 sm:rounded-lg">
-                <div className="shrink-0 pr-8">
-                  <DialogTitle>{expandedImage?.title}</DialogTitle>
+            {expandedImage && (
+              <div
+                className="fixed -top-12 left-0 z-[9999] flex h-[calc(100dvh+3rem)] w-screen items-center justify-center bg-black/90 p-3"
+                role="dialog"
+                aria-modal="true"
+                aria-label={expandedImage.title}
+                onClick={() => setExpandedImage(null)}
+              >
+                <button
+                  type="button"
+                  aria-label="Close expanded image"
+                  className="absolute right-4 top-8 z-[10000] inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/12 text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setExpandedImage(null);
+                  }}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                <div className="flex h-full w-full items-center justify-center" onClick={(event) => event.stopPropagation()}>
+                  {expandedImage.detections?.length ? (
+                    <DamageImageWithDetections
+                      src={expandedImage.src}
+                      alt={expandedImage.alt}
+                      detections={expandedImage.detections}
+                      fit="contain"
+                      showLabels
+                      className="h-[94vh] w-[96vw] bg-transparent"
+                    />
+                  ) : (
+                    <img
+                      src={expandedImage.src}
+                      alt={expandedImage.alt}
+                      className="max-h-[94vh] max-w-[96vw] object-contain"
+                    />
+                  )}
                 </div>
-                {expandedImage && (
-                  <>
-                    <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
-                      {expandedImage.detections?.length ? (
-                        <DamageImageWithDetections
-                          src={expandedImage.src}
-                          alt={expandedImage.alt}
-                          detections={expandedImage.detections}
-                          fit="contain"
-                          showLabels
-                          className="h-[76vh] max-h-[720px] w-full"
-                        />
-                      ) : (
-                        <img
-                          src={expandedImage.src}
-                          alt={expandedImage.alt}
-                          className="max-h-[76vh] max-w-full object-contain"
-                        />
-                      )}
-                    </div>
-                    {expandedImage.detections?.length ? (
-                      <div className="flex shrink-0 justify-end border-t pt-3">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() =>
-                            setExpandedImage({
-                              src: expandedImage.src,
-                              alt: 'Original reported damage',
-                              title: 'Original Reported Damage',
-                            })
-                          }
-                        >
-                          View original image
-                        </Button>
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </DialogContent>
-            </Dialog>
+              </div>
+            )}
 
             {/* Description */}
             <Card>

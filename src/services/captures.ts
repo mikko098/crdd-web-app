@@ -4,7 +4,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
   orderBy,
   query,
   serverTimestamp,
@@ -24,6 +23,7 @@ import {
   getTrafficCongestion,
   trafficStatusFromCongestion,
 } from '@/services/traffic';
+import { getNominatimLocationDisplayName } from '@/services/geocoding';
 
 interface FirebaseCapture {
   capture_id?: string;
@@ -31,6 +31,7 @@ interface FirebaseCapture {
   file_url?: string;
   lat?: number;
   long?: number;
+  location_address?: string;
   accuracy?: number | null;
   captured_at?: number;
   created_at?: Timestamp;
@@ -68,6 +69,49 @@ interface FirestoreWorkflowEvent {
 }
 
 const captureCollection = collection(db, 'captures');
+const contributorNameCache = new Map<string, Promise<string>>();
+
+interface MapCaptureOptions {
+  resolveAddress?: boolean;
+  resolveImages?: boolean;
+}
+
+function fallbackContributorName(userId?: string): string {
+  return userId ? `User ${userId.slice(0, 8)}` : 'Unknown user';
+}
+
+async function getContributorDisplayName(userId?: string): Promise<string> {
+  if (!userId) return fallbackContributorName(userId);
+
+  const cached = contributorNameCache.get(userId);
+  if (cached) return cached;
+
+  const request = getDoc(doc(db, 'users', userId))
+    .then((snapshot) => {
+      const data = snapshot.exists() ? snapshot.data() : undefined;
+      const displayName = typeof data?.display_name === 'string' ? data.display_name.trim() : '';
+      return displayName || fallbackContributorName(userId);
+    })
+    .catch((error) => {
+      console.warn(`Failed to load contributor profile for ${userId}.`, error);
+      return fallbackContributorName(userId);
+    });
+
+  contributorNameCache.set(userId, request);
+  return request;
+}
+
+async function mapCaptureDocs(docs: QuerySnapshot<DocumentData>['docs'], options?: MapCaptureOptions): Promise<RoadDamage[]> {
+  const captures = docs
+    .map((captureDoc) => ({
+      id: captureDoc.id,
+      data: captureDoc.data() as FirebaseCapture,
+    }));
+
+  const mapped = await Promise.all(captures.map((captureDoc) => mapCaptureDocument(captureDoc.id, captureDoc.data, options)));
+
+  return mapped.sort((a, b) => new Date(b.dateReported).getTime() - new Date(a.dateReported).getTime());
+}
 
 function timestampToIso(value?: Timestamp | number | null): string | undefined {
   if (!value) return undefined;
@@ -75,11 +119,15 @@ function timestampToIso(value?: Timestamp | number | null): string | undefined {
   return value.toDate().toISOString();
 }
 
-async function resolveImageUrl(fileUrl?: string): Promise<string> {
+export async function resolveCaptureImageUrl(fileUrl?: string): Promise<string> {
   if (!fileUrl) return `${import.meta.env.BASE_URL}placeholder.svg`;
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) return fileUrl;
   if (fileUrl.startsWith('gs://')) return getDownloadURL(ref(storage, fileUrl));
   return getDownloadURL(ref(storage, fileUrl));
+}
+
+function imageSourceForList(fileUrl?: string): string {
+  return fileUrl || `${import.meta.env.BASE_URL}placeholder.svg`;
 }
 
 function normalizeClassName(name?: string): DamageType {
@@ -94,7 +142,7 @@ function normalizeClassName(name?: string): DamageType {
 }
 
 function pickDamageType(detections: InferenceDetection[] | null | undefined): DamageType {
-  if (!detections?.length) return 'other';
+  if (!detections?.length) return 'no-damage';
 
   const highestConfidenceDetection = [...detections].sort(
     (a, b) => (b.confidence ?? 0) - (a.confidence ?? 0),
@@ -163,7 +211,46 @@ function mapMaintenanceComments(capture: FirebaseCapture): MaintenanceComment[] 
     }));
 }
 
-async function mapCaptureDocument(id: string, capture: FirebaseCapture): Promise<RoadDamage> {
+function isCoordinateFallback(value: string): boolean {
+  return /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(value.trim());
+}
+
+function formatCoordinateAddress(capture: FirebaseCapture): string {
+  return typeof capture.lat === 'number' && typeof capture.long === 'number'
+    ? `${capture.lat.toFixed(6)}, ${capture.long.toFixed(6)}`
+    : 'Unknown location';
+}
+
+export async function resolveAndStoreCaptureAddress(id: string, lat: number, lng: number): Promise<string> {
+  const resolvedAddress = await getNominatimLocationDisplayName(lat, lng);
+
+  if (resolvedAddress !== 'Unknown location' && !isCoordinateFallback(resolvedAddress)) {
+    updateDoc(doc(db, 'captures', id), { location_address: resolvedAddress }).catch((error) => {
+      console.warn(`Failed to store resolved address for ${id}.`, error);
+    });
+  }
+
+  return resolvedAddress;
+}
+
+async function resolveCaptureAddress(id: string, capture: FirebaseCapture, shouldResolve: boolean): Promise<string> {
+  const storedAddress = capture.location_address?.trim();
+  if (storedAddress) return storedAddress;
+
+  if (typeof capture.lat !== 'number' || typeof capture.long !== 'number') {
+    return 'Unknown location';
+  }
+
+  if (!shouldResolve) {
+    return formatCoordinateAddress(capture);
+  }
+
+  return resolveAndStoreCaptureAddress(id, capture.lat, capture.long);
+}
+
+async function mapCaptureDocument(id: string, capture: FirebaseCapture, options: MapCaptureOptions = {}): Promise<RoadDamage> {
+  const resolveAddress = options.resolveAddress ?? true;
+  const resolveImages = options.resolveImages ?? true;
   const detections = capture.inference_results ?? [];
   const severity = inferSeverity(detections);
   const dateReported = timestampToIso(capture.captured_at) ?? timestampToIso(capture.created_at) ?? new Date().toISOString();
@@ -171,6 +258,8 @@ async function mapCaptureDocument(id: string, capture: FirebaseCapture): Promise
     ? await getTrafficCongestion(capture.lat ?? 0, capture.long ?? 0, dateReported)
     : congestionFromStoredLevel(capture.traffic_level);
   const trafficStatus = trafficStatusFromCongestion(trafficCongestion);
+  const contributorName = await getContributorDisplayName(capture.user_id);
+  const address = await resolveCaptureAddress(id, capture, resolveAddress);
 
   return {
     id,
@@ -181,17 +270,17 @@ async function mapCaptureDocument(id: string, capture: FirebaseCapture): Promise
     location: {
       lat: capture.lat ?? 0,
       lng: capture.long ?? 0,
-      address: capture.lat && capture.long ? `${capture.lat.toFixed(6)}, ${capture.long.toFixed(6)}` : 'Unknown location',
+      address,
     },
     dateReported,
     contributor: {
       id: capture.user_id ?? 'unknown',
-      name: capture.user_id ? `User ${capture.user_id.slice(0, 8)}` : 'Unknown user',
+      name: contributorName,
     },
     comment: capture.error_message ?? undefined,
-    imageUrl: await resolveImageUrl(capture.file_url),
+    imageUrl: resolveImages ? await resolveCaptureImageUrl(capture.file_url) : imageSourceForList(capture.file_url),
     afterRepairImageUrl: capture.after_repair_image_url
-      ? await resolveImageUrl(capture.after_repair_image_url)
+      ? resolveImages ? await resolveCaptureImageUrl(capture.after_repair_image_url) : imageSourceForList(capture.after_repair_image_url)
       : undefined,
     trafficStatus,
     trafficCongestion,
@@ -213,8 +302,8 @@ async function mapCaptureDocument(id: string, capture: FirebaseCapture): Promise
 }
 
 export async function getCaptures(): Promise<RoadDamage[]> {
-  const snapshot = await getDocs(query(captureCollection, orderBy('created_at', 'desc'), limit(250)));
-  return Promise.all(snapshot.docs.map((captureDoc) => mapCaptureDocument(captureDoc.id, captureDoc.data() as FirebaseCapture)));
+  const snapshot = await getDocs(query(captureCollection, orderBy('created_at', 'desc')));
+  return mapCaptureDocs(snapshot.docs, { resolveAddress: false, resolveImages: false });
 }
 
 export async function getCaptureById(id: string): Promise<RoadDamage | null> {
@@ -224,7 +313,7 @@ export async function getCaptureById(id: string): Promise<RoadDamage | null> {
 }
 
 async function mapCaptureSnapshot(snapshot: QuerySnapshot<DocumentData>): Promise<RoadDamage[]> {
-  return Promise.all(snapshot.docs.map((captureDoc) => mapCaptureDocument(captureDoc.id, captureDoc.data() as FirebaseCapture)));
+  return mapCaptureDocs(snapshot.docs, { resolveAddress: false, resolveImages: false });
 }
 
 export function subscribeCaptures(
@@ -232,7 +321,7 @@ export function subscribeCaptures(
   onError: (error: Error) => void,
 ): () => void {
   return onSnapshot(
-    query(captureCollection, orderBy('created_at', 'desc'), limit(250)),
+    query(captureCollection, orderBy('created_at', 'desc')),
     (snapshot) => {
       mapCaptureSnapshot(snapshot).then(onData).catch(onError);
     },

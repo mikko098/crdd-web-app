@@ -5,7 +5,7 @@ export type ThemePreference = 'light' | 'dark' | 'system';
 
 export type DamageSeverity = 'critical' | 'high' | 'medium' | 'low';
 
-export type DamageType = 'pothole' | 'transverse-crack' | 'alligator' | 'longitudinal-crack' | 'other';
+export type DamageType = 'pothole' | 'transverse-crack' | 'alligator' | 'longitudinal-crack' | 'other' | 'no-damage';
 
 export interface InferenceDetection {
   class_id?: number;
