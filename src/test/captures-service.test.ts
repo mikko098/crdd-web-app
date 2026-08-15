@@ -45,6 +45,7 @@ import {
   assignCaptureTeam,
   getCaptureById,
   getCaptures,
+  markCaptureNoDamage,
   updateCaptureStatus,
   uploadCaptureAfterRepairPhoto,
 } from '@/services/captures';
@@ -155,6 +156,8 @@ describe('captures service', () => {
         long: 101.6869,
         captured_at: 1710000000000,
         has_inferenced: true,
+        status: 'pending',
+        repair_status: 'pending',
         traffic_level: 1,
         inference_results: [],
       }),
@@ -163,6 +166,7 @@ describe('captures service', () => {
     const capture = await getCaptureById('capture-no-damage');
 
     expect(capture?.type).toBe('no-damage');
+    expect(capture?.status).toBe('completed');
     expect(capture?.description).toBe('Model inference completed with no road damage detections.');
   });
 
@@ -325,6 +329,29 @@ describe('captures service', () => {
       expect.objectContaining({ path: 'captures/capture-2' }),
       {
         repair_status: 'completed',
+        updated_at: 'server-now',
+      },
+    );
+  });
+
+  it('clears detections and stores manager review when marking a false report as no damage', async () => {
+    await markCaptureNoDamage('capture-false-report', managerActor);
+
+    expect(firestoreMocks.updateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'captures/capture-false-report' }),
+      {
+        inference_results: [],
+        has_inferenced: true,
+        status: 'completed',
+        repair_status: 'completed',
+        error_message: null,
+        manager_review: {
+          status: 'no-damage',
+          marked_false_report: true,
+          reviewed_by: 'manager-1',
+          reviewed_by_name: 'Manager',
+          reviewed_at: 'server-now',
+        },
         updated_at: 'server-now',
       },
     );

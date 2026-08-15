@@ -28,6 +28,27 @@ function hasUsableBox(detection: InferenceDetection): detection is InferenceDete
     && detection.bbox.every((value) => typeof value === 'number' && Number.isFinite(value));
 }
 
+function formatDetectionName(detection: InferenceDetection): string {
+  const className = detection.class_name?.trim();
+  const normalized = className?.toLowerCase() ?? '';
+
+  if (normalized.includes('pothole') || normalized.includes('d40') || detection.class_id === 3) return 'Pothole';
+  if (normalized.includes('transverse') || normalized.includes('d10') || detection.class_id === 1) return 'Transverse crack';
+  if (normalized.includes('alligator') || normalized.includes('d20') || detection.class_id === 2) return 'Alligator cracking';
+  if (normalized.includes('longitudinal') || normalized.includes('d00') || detection.class_id === 0) return 'Longitudinal crack';
+
+  return className || 'Road damage';
+}
+
+function formatDetectionLabel(detection: InferenceDetection): string {
+  const name = formatDetectionName(detection);
+  const accuracy = typeof detection.confidence === 'number'
+    ? ` - ${Math.round(detection.confidence * 100)}% accuracy`
+    : '';
+
+  return `${name}${accuracy}`;
+}
+
 const DamageImageWithDetections: React.FC<DamageImageWithDetectionsProps> = ({
   src,
   alt,
@@ -140,22 +161,38 @@ const DamageImageWithDetections: React.FC<DamageImageWithDetectionsProps> = ({
               const top = (y1 / metrics.naturalHeight) * metrics.renderedHeight;
               const width = ((x2 - x1) / metrics.naturalWidth) * metrics.renderedWidth;
               const height = ((y2 - y1) / metrics.naturalHeight) * metrics.renderedHeight;
+              const label = formatDetectionLabel(detection);
+              const labelTop = top >= 24 ? top - 24 : top + height + 4;
+              const shouldAnchorRight = left + Math.max(width, 220) > metrics.renderedWidth;
+              const labelStyle: React.CSSProperties = shouldAnchorRight
+                ? {
+                    maxWidth: Math.max(metrics.renderedWidth - 8, 0),
+                    right: Math.max(metrics.renderedWidth - left - width, 4),
+                    top: labelTop,
+                  }
+                : {
+                    left: Math.max(left, 4),
+                    maxWidth: Math.max(metrics.renderedWidth - left - 8, 0),
+                    top: labelTop,
+                  };
 
               if (width <= 0 || height <= 0) return null;
 
               return (
-                <div
-                  key={`${detection.class_id ?? detection.class_name ?? 'damage'}-${index}-${x1}-${y1}`}
-                  className="absolute border-2 border-red-500 shadow-[0_0_0_1px_rgba(255,255,255,0.85)]"
-                  style={{ left, top, width, height }}
-                >
+                <React.Fragment key={`${detection.class_id ?? detection.class_name ?? 'damage'}-${index}-${x1}-${y1}`}>
+                  <div
+                    className="absolute border-2 border-red-500 shadow-[0_0_0_1px_rgba(255,255,255,0.85)]"
+                    style={{ left, top, width, height }}
+                  />
                   {showLabels && (
-                    <span className="absolute left-0 top-0 max-w-full -translate-y-full truncate bg-red-500 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white shadow">
-                      {detection.class_name ?? 'Damage'}
-                      {typeof detection.confidence === 'number' ? ` ${Math.round(detection.confidence * 100)}%` : ''}
+                    <span
+                      className="absolute z-10 rounded-sm bg-red-500 px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-white shadow-[0_1px_3px_rgba(0,0,0,0.35)]"
+                      style={labelStyle}
+                    >
+                      {label}
                     </span>
                   )}
-                </div>
+                </React.Fragment>
               );
             })}
           </div>

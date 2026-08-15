@@ -13,11 +13,22 @@ interface DamageCardProps {
   compact?: boolean;
   locationLabel?: string;
   showImage?: boolean;
+  reportNavigationState?: {
+    returnView: 'map' | 'list';
+    reportIds: string[];
+  };
 }
 
-const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false, locationLabel, showImage = true }) => {
+const DamageCard: React.FC<DamageCardProps> = ({
+  damage,
+  compact = false,
+  locationLabel,
+  showImage = true,
+  reportNavigationState,
+}) => {
   const navigate = useNavigate();
   const displayLocation = locationLabel ?? damage.location.address;
+  const openDetail = () => navigate(`/damage/${damage.id}`, { state: reportNavigationState });
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -68,7 +79,7 @@ const DamageCard: React.FC<DamageCardProps> = ({ damage, compact = false, locati
               variant="outline" 
               size="sm" 
               className="w-full"
-              onClick={() => navigate(`/damage/${damage.id}`)}
+              onClick={openDetail}
             >
               <Eye className="w-3 h-3 mr-1 text-primary" />
               View Details

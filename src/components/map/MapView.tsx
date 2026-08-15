@@ -15,6 +15,10 @@ interface MapViewProps {
     lng: number;
     label: string;
   } | null;
+  reportNavigationState?: {
+    returnView: 'map' | 'list';
+    reportIds: string[];
+  };
 }
 
 const osmTileLayer = {
@@ -129,7 +133,7 @@ const MapController: React.FC<{
   return null;
 };
 
-const MapView: React.FC<MapViewProps> = ({ damages, focusedLocation }) => {
+const MapView: React.FC<MapViewProps> = ({ damages, focusedLocation, reportNavigationState }) => {
   const { resolvedTheme } = useTheme();
   const [selectedDamage, setSelectedDamage] = useState<RoadDamage | null>(null);
   const [locationNames, setLocationNames] = useState<Record<string, string>>({});
@@ -257,6 +261,7 @@ const MapView: React.FC<MapViewProps> = ({ damages, focusedLocation }) => {
                 damage={damage}
                 compact
                 showImage={false}
+                reportNavigationState={reportNavigationState}
                 locationLabel={
                   locationNames[damage.id] ??
                   (selectedDamage?.id === damage.id ? 'Resolving location...' : damage.location.address)

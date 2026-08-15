@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate, Navigate } from 'react-router-dom';
+import { useParams, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCapture, useCaptureWorkflowEvents } from '@/hooks/useCaptures';
+import { useCapture, useCaptures, useCaptureWorkflowEvents } from '@/hooks/useCaptures';
 import { useCreateMaintenanceTeam, useMaintenanceTeams } from '@/hooks/useMaintenanceTeams';
 import { hasPermission } from '@/lib/permissions';
 import { DamageStatus } from '@/types';
 import {
   addCaptureComment,
   assignCaptureTeam,
+  markCaptureNoDamage,
   updateCaptureStatus,
   uploadCaptureAfterRepairPhoto,
 } from '@/services/captures';
@@ -26,6 +27,16 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import StatusBadge from '@/components/damage/StatusBadge';
 import SeverityIndicator from '@/components/damage/SeverityIndicator';
 import DamageImageWithDetections from '@/components/damage/DamageImageWithDetections';
@@ -33,6 +44,8 @@ import { InferenceDetection } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   MapPin,
   Calendar,
   User,
@@ -42,13 +55,20 @@ import {
   Send,
   AlertTriangle,
   Cpu,
+  CheckCircle2,
   Maximize2,
   X,
 } from 'lucide-react';
 
+interface DetailNavigationState {
+  returnView?: 'map' | 'list';
+  reportIds?: string[];
+}
+
 const DamageDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const [comment, setComment] = useState('');
@@ -57,6 +77,7 @@ const DamageDetail: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState<DamageStatus | ''>('');
   const [displayLocation, setDisplayLocation] = useState('');
   const [savingAction, setSavingAction] = useState<string | null>(null);
+  const [isNoDamageDialogOpen, setIsNoDamageDialogOpen] = useState(false);
   const [expandedImage, setExpandedImage] = useState<{
     src: string;
     alt: string;
@@ -65,6 +86,7 @@ const DamageDetail: React.FC = () => {
   } | null>(null);
   const afterRepairInputRef = useRef<HTMLInputElement>(null);
   const { data: damage, isLoading, isError, error } = useCapture(id);
+  const { data: allDamages = [] } = useCaptures();
   const { data: teams = [], isLoading: isLoadingTeams } = useMaintenanceTeams();
   const createTeam = useCreateMaintenanceTeam();
   const { toast } = useToast();
@@ -72,10 +94,29 @@ const DamageDetail: React.FC = () => {
   const canComment = hasPermission(user, 'reports:comment');
   const canAssignTeam = hasPermission(user, 'reports:assign-team');
   const canUpdateStatus = hasPermission(user, 'reports:update-status');
+  const canMarkNoDamage = canUpdateStatus;
   const canUploadAfterPhoto = hasPermission(user, 'reports:upload-after-photo');
   const canViewWorkflowHistory = hasPermission(user, 'reports:view-workflow-history');
   const canCreateTeams = hasPermission(user, 'teams:create');
   const { data: workflowEvents = [] } = useCaptureWorkflowEvents(canViewWorkflowHistory ? id : undefined);
+  const detailNavigationState = (location.state ?? {}) as DetailNavigationState;
+  const returnView = detailNavigationState.returnView === 'list' ? 'list' : 'map';
+  const routeReportIds = Array.isArray(detailNavigationState.reportIds) ? detailNavigationState.reportIds : [];
+  const reportIds = routeReportIds.length ? routeReportIds : allDamages.map((report) => report.id);
+  const currentReportIndex = id ? reportIds.indexOf(id) : -1;
+  const previousReportId = currentReportIndex > 0 ? reportIds[currentReportIndex - 1] : undefined;
+  const nextReportId = currentReportIndex >= 0 && currentReportIndex < reportIds.length - 1
+    ? reportIds[currentReportIndex + 1]
+    : undefined;
+  const navigationState: DetailNavigationState = {
+    returnView,
+    reportIds,
+  };
+  const goBackToDashboard = () => navigate('/dashboard', { state: { view: returnView } });
+  const goToReport = (reportId?: string) => {
+    if (!reportId) return;
+    navigate(`/damage/${reportId}`, { state: navigationState });
+  };
 
   useEffect(() => {
     if (!damage) return;
@@ -111,7 +152,7 @@ const DamageDetail: React.FC = () => {
           <p className="text-muted-foreground mb-4">
             {isError && error instanceof Error ? error.message : "The damage report you're looking for doesn't exist."}
           </p>
-          <Button onClick={() => navigate('/dashboard')}>
+          <Button onClick={goBackToDashboard}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
           </Button>
@@ -157,6 +198,7 @@ const DamageDetail: React.FC = () => {
   };
   const damageDetections = damage.inferenceResults ?? [];
   const hasDamageDetections = damageDetections.some((detection) => Array.isArray(detection.bbox) && detection.bbox.length >= 4);
+  const isNoDamageReport = damage.type === 'no-damage';
 
   const refreshCapture = async () => {
     await Promise.all([
@@ -294,6 +336,39 @@ const DamageDetail: React.FC = () => {
     }
   };
 
+  const handleMarkNoDamage = async () => {
+    if (!damage) return;
+    if (!user || !canMarkNoDamage) {
+      toast({
+        title: 'Manager role required',
+        description: 'Only managers can mark false reports as no damage.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setSavingAction('no-damage');
+      await markCaptureNoDamage(damage.id, { id: user.id, name: user.name, role: user.role });
+      setSelectedStatus('completed');
+      setIsNoDamageDialogOpen(false);
+      await refreshCapture();
+      toast({
+        title: 'Report marked as no damage',
+        description: 'Firestore was updated and the report is no longer treated as road damage.',
+      });
+    } catch (err) {
+      console.error('Failed to mark report as no damage:', err);
+      toast({
+        title: 'Failed to mark no damage',
+        description: 'Check your Firestore permissions and try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
   const handleAfterRepairUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !damage) return;
@@ -343,12 +418,36 @@ const DamageDetail: React.FC = () => {
     <div className="min-h-screen bg-secondary/30">
       {/* Header */}
       <header className="h-16 border-b bg-card/95 px-4 flex items-center gap-4 sticky top-0 z-50 shadow-sm backdrop-blur">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
+        <Button variant="ghost" size="icon" onClick={goBackToDashboard}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <div>
+        <div className="min-w-0">
           <h1 className="font-semibold">Damage Report {damage.captureId ?? damage.id}</h1>
           <p className="text-xs text-muted-foreground">{damageTypeLabels[damage.type]}</p>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => goToReport(previousReportId)}
+            disabled={!previousReportId}
+          >
+            <ChevronLeft className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Previous Report</span>
+            <span className="sr-only sm:hidden">Previous report</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => goToReport(nextReportId)}
+            disabled={!nextReportId}
+          >
+            <span className="hidden sm:inline">Next Report</span>
+            <span className="sr-only sm:hidden">Next report</span>
+            <ChevronRight className="h-4 w-4 sm:ml-1" />
+          </Button>
         </div>
       </header>
 
@@ -675,6 +774,33 @@ const DamageDetail: React.FC = () => {
                   <CardTitle>Manager Actions</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {canMarkNoDamage && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>False Report Review</Label>
+                        <Button
+                          type="button"
+                          variant={isNoDamageReport ? 'secondary' : 'outline'}
+                          className="w-full justify-start"
+                          onClick={() => setIsNoDamageDialogOpen(true)}
+                          disabled={isNoDamageReport || savingAction === 'no-damage'}
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          {isNoDamageReport
+                            ? 'Marked as No Damage'
+                            : savingAction === 'no-damage'
+                              ? 'Updating...'
+                              : 'Mark as No Damage'}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Use when a manager confirms the model detection is a false report.
+                        </p>
+                      </div>
+
+                      <Separator />
+                    </>
+                  )}
+
                   <div className="space-y-2">
                     <Label>Assign Team</Label>
                     <Select value={selectedTeam} onValueChange={setSelectedTeam}>
@@ -746,6 +872,35 @@ const DamageDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <AlertDialog
+        open={isNoDamageDialogOpen}
+        onOpenChange={(open) => {
+          if (savingAction !== 'no-damage') setIsNoDamageDialogOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark this report as no damage?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear the stored detection results, mark inference and repair status as completed,
+              and save a manager review entry in Firestore.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingAction === 'no-damage'}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                handleMarkNoDamage();
+              }}
+              disabled={savingAction === 'no-damage'}
+            >
+              {savingAction === 'no-damage' ? 'Updating...' : 'Mark No Damage'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

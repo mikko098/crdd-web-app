@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Navigate } from 'react-router-dom';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DamageType, DamageStatus, DamageSeverity } from '@/types';
 import { useCaptures } from '@/hooks/useCaptures';
@@ -32,24 +32,62 @@ interface Filters {
 }
 
 const NO_DAMAGE_TYPE: DamageType = 'no-damage';
+const DASHBOARD_STATE_KEY = 'roadvision-dashboard-state';
+
+interface SavedDashboardState {
+  view?: DashboardView;
+  filters?: Filters;
+  sortBy?: string;
+  searchTerm?: string;
+  selectedSearchLocation?: LocationSearchResult | null;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+function isDashboardView(value: unknown): value is DashboardView {
+  return value === 'overview' || value === 'map' || value === 'list';
+}
+
+function getSavedDashboardState(): SavedDashboardState {
+  try {
+    const stored = window.sessionStorage.getItem(DASHBOARD_STATE_KEY);
+    return stored ? JSON.parse(stored) as SavedDashboardState : {};
+  } catch {
+    return {};
+  }
+}
 
 const Dashboard: React.FC = () => {
+  const location = useLocation();
+  const savedDashboardState = useMemo(getSavedDashboardState, []);
+  const requestedView = (location.state as { view?: unknown } | null)?.view;
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const { data: damages = [], isLoading, isError, error } = useCaptures();
+  const hasMountedRef = useRef(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [view, setView] = useState<DashboardView>('overview');
-  const [filters, setFilters] = useState<Filters>({
+  const [view, setView] = useState<DashboardView>(
+    isDashboardView(requestedView)
+      ? requestedView
+      : isDashboardView(savedDashboardState.view)
+        ? savedDashboardState.view
+        : 'overview',
+  );
+  const [filters, setFilters] = useState<Filters>(savedDashboardState.filters ?? {
     types: [],
     statuses: [],
     severities: [],
   });
-  const [sortBy, setSortBy] = useState('date-desc');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSearchLocation, setSelectedSearchLocation] = useState<LocationSearchResult | null>(null);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [sortBy, setSortBy] = useState(savedDashboardState.sortBy ?? 'date-desc');
+  const [searchTerm, setSearchTerm] = useState(savedDashboardState.searchTerm ?? '');
+  const [selectedSearchLocation, setSelectedSearchLocation] = useState<LocationSearchResult | null>(
+    savedDashboardState.selectedSearchLocation ?? null,
+  );
+  const [dateFrom, setDateFrom] = useState(savedDashboardState.dateFrom ?? '');
+  const [dateTo, setDateTo] = useState(savedDashboardState.dateTo ?? '');
+  const [page, setPage] = useState(savedDashboardState.page ?? 1);
+  const [pageSize, setPageSize] = useState(savedDashboardState.pageSize ?? 25);
   const canExportReports = hasPermission(user, 'reports:export');
   const canViewManagerOverview = hasPermission(user, 'reports:export');
 
@@ -125,8 +163,35 @@ const Dashboard: React.FC = () => {
   }, [filteredDamages, page, pageSize]);
 
   useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+
     setPage(1);
   }, [dateFrom, dateTo, filters, pageSize, sortBy, view]);
+
+  useEffect(() => {
+    if (isDashboardView(requestedView)) {
+      setView(requestedView);
+    }
+  }, [requestedView]);
+
+  useEffect(() => {
+    const state: SavedDashboardState = {
+      view,
+      filters,
+      sortBy,
+      searchTerm,
+      selectedSearchLocation,
+      dateFrom,
+      dateTo,
+      page,
+      pageSize,
+    };
+
+    window.sessionStorage.setItem(DASHBOARD_STATE_KEY, JSON.stringify(state));
+  }, [dateFrom, dateTo, filters, page, pageSize, searchTerm, selectedSearchLocation, sortBy, view]);
 
   const handleLocationSelect = (location: LocationSearchResult | null) => {
     setSelectedSearchLocation(location);
@@ -175,6 +240,11 @@ const Dashboard: React.FC = () => {
   }
 
   const activeView = canViewManagerOverview ? view : view === 'overview' ? 'map' : view;
+  const reportIds = filteredDamages.map((damage) => damage.id);
+  const reportNavigationState = {
+    returnView: activeView === 'overview' ? 'map' : activeView,
+    reportIds,
+  };
 
   return (
     <div className="min-h-screen bg-secondary/30 flex flex-col">
@@ -259,10 +329,14 @@ const Dashboard: React.FC = () => {
             ) : activeView === 'overview' ? (
               <ManagerReportDashboard damages={filteredDamages} />
             ) : activeView === 'map' ? (
-              <MapView damages={filteredDamages} focusedLocation={selectedSearchLocation} />
+              <MapView
+                damages={filteredDamages}
+                focusedLocation={selectedSearchLocation}
+                reportNavigationState={reportNavigationState}
+              />
             ) : (
               <div className="space-y-3">
-                <DamageList damages={pagedDamages} />
+                <DamageList damages={pagedDamages} reportNavigationState={reportNavigationState} />
                 <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-muted-foreground">
                     Page {page} of {totalPages} ({filteredDamages.length} matching reports)

@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   orderBy,
   query,
   serverTimestamp,
@@ -179,6 +180,10 @@ function isRepairStatus(value?: string): value is DamageStatus {
 }
 
 function inferStatus(capture: FirebaseCapture, severity: DamageSeverity, trafficStatus: RoadDamage['trafficStatus']): DamageStatus {
+  if (capture.has_inferenced && Array.isArray(capture.inference_results) && capture.inference_results.length === 0) {
+    return 'completed';
+  }
+
   if (isRepairStatus(capture.repair_status)) return capture.repair_status;
   if (capture.assigned_team && isRepairStatus(capture.status)) return capture.status;
   if (capture.assigned_team) return 'in-progress';
@@ -399,6 +404,31 @@ export async function updateCaptureStatus(id: string, status: DamageStatus, acto
     action: 'status-updated',
     actor,
     details: `Status changed to ${status.replace('-', ' ')}.`,
+  });
+}
+
+export async function markCaptureNoDamage(id: string, actor: WorkflowActor): Promise<void> {
+  requireManager(actor);
+
+  await updateDoc(doc(db, 'captures', id), {
+    inference_results: [],
+    has_inferenced: true,
+    status: 'completed',
+    repair_status: 'completed',
+    error_message: null,
+    manager_review: {
+      status: 'no-damage',
+      marked_false_report: true,
+      reviewed_by: actor.id,
+      reviewed_by_name: actor.name,
+      reviewed_at: serverTimestamp(),
+    },
+    updated_at: serverTimestamp(),
+  });
+  await recordWorkflowEvent(id, {
+    action: 'marked-no-damage',
+    actor,
+    details: 'Manager marked this report as a false detection with no road damage.',
   });
 }
 

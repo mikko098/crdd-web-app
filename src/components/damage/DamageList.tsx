@@ -16,9 +16,13 @@ import { MapPin } from 'lucide-react';
 
 interface DamageListProps {
   damages: RoadDamage[];
+  reportNavigationState?: {
+    returnView: 'map' | 'list';
+    reportIds: string[];
+  };
 }
 
-const DamageList: React.FC<DamageListProps> = ({ damages }) => {
+const DamageList: React.FC<DamageListProps> = ({ damages, reportNavigationState }) => {
   const navigate = useNavigate();
 
   const formatDate = (dateString: string) => {
@@ -69,7 +73,7 @@ const DamageList: React.FC<DamageListProps> = ({ damages }) => {
             <TableRow 
               key={damage.id} 
               className="cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => navigate(`/damage/${damage.id}`)}
+              onClick={() => navigate(`/damage/${damage.id}`, { state: reportNavigationState })}
             >
               <TableCell className="font-medium">{damage.captureId ?? damage.id}</TableCell>
               <TableCell>
